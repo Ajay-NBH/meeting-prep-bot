@@ -1,0 +1,21 @@
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+venv/
+*.env
+env/
+.env.*
+
+# Secrets and Tokens - VERY IMPORTANT
+credentials.json
+token_*.json
+*.pem
+*.key
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
