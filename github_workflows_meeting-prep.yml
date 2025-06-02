@@ -2,18 +2,14 @@ name: Meeting Prep Bot Scheduled Run
 
 on:
   schedule:
-    # Runs every day at 11:00 UTC (adjust your cron expression as needed)
-    # For every 2 hours, it would be '0 */2 * * *'
-    - cron: '0 4-14 * * 1-6' # This runs daily from 10 AM to 7 PM IST except on Sunday
+    # Runs hourly from 4:00 UTC to 14:00 UTC (inclusive, on the hour)
+    # This is approx 9:30 AM IST to 7:30 PM IST
+    - cron: '0 4-14 * * 1-6' # Monday to Saturday
   workflow_dispatch: # Allows you to trigger manually
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
-
-    # Define environment variables at the job level to be available to all steps,
-    # or specifically within the 'run' command of a single step.
-    # For simplicity and clarity, setting them directly in the run command is often easier.
 
     steps:
       - name: Checkout repository
@@ -22,7 +18,16 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9.6' # Ensure this matches your local dev environment
+          python-version: '3.9.6' # Or '3.9' if you prefer
+
+      # Optional: Add caching for processed_event_ids.txt if you need to persist it
+      # - name: Cache processed events
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: processed_event_ids.txt
+      #     key: ${{ runner.os }}-processed-events-${{ github.run_id }}-${{ github.run_attempt }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-processed-events-
 
       - name: Install dependencies
         run: |
@@ -30,34 +35,50 @@ jobs:
           pip install -r requirements.txt
 
       - name: Create credentials.json and Run Meeting Prep Script
-        # This single step will:
-        # 1. Create credentials.json from the secret.
-        # 2. Set GOOGLE_APPLICATION_CREDENTIALS (scoped to this run block).
-        # 3. Run your Python script with all necessary environment variables.
-        env: # Environment variables for this specific step
+        env:
+          # OAuth Client ID/Secret (credentials.json) will be created from GOOGLE_CREDENTIALS_JSON_CONTENT secret
+          # Gemini API Key
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          NBH_GDRIVE_FOLDER_ID: ${{ secrets.NBH_GDRIVE_FOLDER_ID }}
-          # GOOGLE_APPLICATION_CREDENTIALS will be set by the script commands below
+          # Other config from secrets or hardcoded in script
+
+          # --- CRITICAL: User OAuth Token JSON content from secrets ---
+          # These MUST match the names of the secrets you created in GitHub
+          # And the names your Python script (modified get_google_service) will expect
+          GOOGLE_TOKEN_JSON_CALENDAR: ${{ secrets.GOOGLE_TOKEN_CALENDAR_JSON }}
+          GOOGLE_TOKEN_JSON_GMAIL: ${{ secrets.GOOGLE_TOKEN_GMAIL_JSON }}
+          GOOGLE_TOKEN_JSON_DRIVE: ${{ secrets.GOOGLE_TOKEN_DRIVE_JSON }}
+          GOOGLE_TOKEN_JSON_SHEETS: ${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}
+          # If you used a single combined token secret (e.g., GOOGLE_TOKEN_JSON_COMBINED),
+          # then you'd only have that one here, and your Python script would expect that one.
+          # For now, assuming separate token secrets as discussed.
+
+          # Flag for the script to know it's in CI and should behave differently for auth
+          CI: true
         run: |
-          echo "Creating credentials.json from secret..."
+          echo "Creating credentials.json (OAuth Client ID/Secret) from secret..."
           echo "${{ secrets.GOOGLE_CREDENTIALS_JSON_CONTENT }}" > credentials.json
-          
-          echo "Setting GOOGLE_APPLICATION_CREDENTIALS environment variable..."
-          export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/credentials.json" # This export is for THIS run block
-          
-          echo "GOOGLE_APPLICATION_CREDENTIALS is set to: $GOOGLE_APPLICATION_CREDENTIALS"
-          echo "GEMINI_API_KEY is set (length): ${#GEMINI_API_KEY}" # Check if it's populated
-          echo "NBH_GDRIVE_FOLDER_ID is set to: $NBH_GDRIVE_FOLDER_ID"
-          
+
+          # REMOVED: export GOOGLE_APPLICATION_CREDENTIALS - it's not used by your script's user OAuth flow.
+
           echo "Verifying credentials.json file..."
           ls -l credentials.json
-          cat credentials.json # Optional: print content for debugging (be careful if logs are public)
+          # Avoid: cat credentials.json in public logs as it contains client_secret
+
+          echo "Checking environment variables (lengths or presence)..."
+          echo "GEMINI_API_KEY length: ${#GEMINI_API_KEY}"
+          echo "NBH_GDRIVE_FOLDER_ID: $NBH_GDRIVE_FOLDER_ID" # Will be empty if secret not set & not hardcoded in script via os.getenv default
+          echo "ADMIN_EMAIL_FOR_NOTIFICATIONS: $ADMIN_EMAIL_FOR_NOTIFICATIONS" # Same as above
+          echo "GOOGLE_TOKEN_JSON_CALENDAR length: ${#GOOGLE_TOKEN_JSON_CALENDAR}"
+          echo "GOOGLE_TOKEN_JSON_GMAIL length: ${#GOOGLE_TOKEN_JSON_GMAIL}"
+          echo "GOOGLE_TOKEN_JSON_DRIVE length: ${#GOOGLE_TOKEN_JSON_DRIVE}"
+          echo "GOOGLE_TOKEN_JSON_SHEETS length: ${#GOOGLE_TOKEN_JSON_SHEETS}"
+          echo "CI: $CI"
 
           echo "Running Python script: meeting-prep_running_version.py"
           python meeting-prep_running_version.py # Replace with your actual script name
 
       - name: Clean up credentials file
-        if: always() # Ensures this step runs even if the script fails
+        if: always()
         run: |
           echo "Cleaning up credentials.json..."
           rm -f credentials.json
