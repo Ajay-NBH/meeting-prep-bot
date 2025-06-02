@@ -1048,6 +1048,13 @@ def set_one_hour_email_reminder(calendar_service, event_id, calendar_id='primary
 
 # --- Meeting Info Extraction ---
 
+NBH_SERVICE_ACCOUNTS_TO_EXCLUDE = { # Emails to exclude from the displayed NBH attendee list
+    AGENT_EMAIL.lower(),
+    "pia.brand@nobroker.in",
+    "pia@nobroker.in"
+}
+
+
 def extract_meeting_info(event):
     event_id = event['id']
     summary = event.get('summary', 'No Title')
@@ -1059,168 +1066,222 @@ def extract_meeting_info(event):
     
     nbh_attendees = []
     brand_attendees_info = []
-    brand_name_candidates_from_domain = set()
+    brand_name_candidates_from_domain = set() # Will store capitalized first parts of domains
 
     organizer_email = event.get('organizer', {}).get('email', '').lower()
-    if organizer_email and '@nobroker.in' not in organizer_email:
+    if organizer_email and '@nobroker.in' not in organizer_email and '@' in organizer_email:
         try:
-            brand_name_candidates_from_domain.add(organizer_email.split('@')[1].split('.')[0].capitalize())
+            domain_part = organizer_email.split('@')[1].split('.')[0]
+            if domain_part.lower() not in ['gmail', 'outlook', 'yahoo', 'hotmail', 'aol']: # Basic check
+                 brand_name_candidates_from_domain.add(domain_part.capitalize())
         except IndexError: pass
 
-    is_agent_email_accepted = False
+    is_agent_email_accepted = False # Assuming AGENT_EMAIL is defined globally
     for attendee in attendees:
         email = attendee.get('email','').lower()
         name = attendee.get('displayName', email) 
         if email == AGENT_EMAIL.lower():
-            is_agent_email_accepted = True
+            # Check responseStatus if agent needs to accept
+            # For now, let's assume if AGENT_EMAIL is an attendee, it's eligible for script to read
+            # But the user clarified agent doesn't "accept", so we just need it to be on the invite
+            # This flag might be more about "is the bot invited at all".
+            # Let's assume for now your main script loop only processes events where the bot can access them.
+            # The original logic for this flag was:
+            is_agent_email_accepted = True # Simplified: if agent email is present, consider it "accepted" for processing
         elif '@nobroker.in' in email:
-            nbh_attendees.append({'email': email, 'name': name})
-        elif email:
+            # Exclude pia.brand@nobroker.in and pia@nobroker.in from NBH attendees list
+            if email not in ["pia.brand@nobroker.in", "pia@nobroker.in", AGENT_EMAIL.lower()]:
+                 nbh_attendees.append({'email': email, 'name': name})
+        elif email: # External attendee
             brand_attendees_info.append({'name': name, 'email': email})
             if '@' in email:
                 try:
-                    domain_part = email.split('@')[1]
-                    if domain_part.lower() not in ['gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com', 'aol.com']:
-                        brand_name_candidates_from_domain.add(domain_part.split('.')[0].capitalize())
+                    domain_full = email.split('@')[1]
+                    if not any(public_domain in domain_full.lower() for public_domain in ['gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com', 'aol.com']):
+                        domain_part = domain_full.split('.')[0]
+                        if len(domain_part) > 1: # Avoid single letter domain parts unless it's intended
+                             brand_name_candidates_from_domain.add(domain_part.capitalize())
                 except IndexError: pass
     
-    if not is_agent_email_accepted:
-        print(f"  Skipping event '{summary}': {AGENT_EMAIL} has not accepted or is not an attendee.")
+    # If your script relies on brand.vmeet being an *accepted* attendee to proceed,
+    # you'd re-enable the check for its responseStatus here and return None if not accepted.
+    # For now, matching your provided code's structure which sets it to True if present.
+    if not is_agent_email_accepted: # This implies brand.vmeet was not found in attendees at all
+        print(f"  Skipping event '{summary}': {AGENT_EMAIL} is not an attendee on this invite.")
         return None
 
     if not brand_attendees_info:
         return "NO_EXTERNAL_ATTENDEES" 
 
-    brand_name = "Unknown Brand"
-    title_lower = summary.lower()
-    
-    # --- Start Brand Name Extraction ---
-    # 1. Define NBH entities and phrases to remove
-    nbh_entities = ["nobrokerhood", "nobroker", "nbh","broker","no","hood"]
+    brand_name_from_title = "Unknown Brand" # Initialize
+    title_input = summary # Use original summary for prefix removal
+
+    # 1. Remove common email subject prefixes (more robustly)
+    #    This regex looks for "fw", "fwd", "re", "aw" etc. at the beginning,
+    #    optionally followed by spaces, then a colon, then optional spaces.
+    cleaned_title_after_prefixes = re.sub(r'^\s*(fw|fwd|re|aw)\s*:\s*', '', title_input, flags=re.IGNORECASE).strip()
+    # If the above didn't catch it (e.g. "FW NoBroker..."), try removing just the prefix word if followed by space
+    if cleaned_title_after_prefixes.lower().startswith(tuple(p.lower() for p in ["fw ", "fwd ", "re ", "aw "])):
+        cleaned_title_after_prefixes = re.sub(r'^\s*(fw|fwd|re|aw)\s+', '', cleaned_title_after_prefixes, flags=re.IGNORECASE).strip()
+
+
+    title_lower_for_processing = cleaned_title_after_prefixes.lower()
+
+    # 2. Define NBH entities and meeting phrases
+    nbh_entities = ["nobrokerhood", "nobroker", "nbh", "broker", "no broker", "hood", "No"] # "no broker" added
     meeting_phrases = [
         "meeting with", "call with", "sync with", "internal", "discussion", 
         "intro call", "kick off", "proposal", "review", "update", "connect", 
-        "broker", "hood", "team", "session", "chat", "catch up", "briefing", 
-        "brief", "sync", "meeting", "call"
+        "team", "session", "chat", "catch up", "briefing", 
+        "brief", "sync", "meeting", "call", "agenda", "discussion points",
+        "commercial discussion", "commercial", "with" # Make "commercial discussion" more specific
     ]
-    phrases_to_remove = nbh_entities + meeting_phrases
-
-    # 2. Attempt to specifically handle "BRAND X NBH_ENTITY" or "NBH_ENTITY X BRAND"
-    #    This should generally happen on a cleaner version of the title.
-    #    Let's first remove common meeting phrases that might interfere.
+    # Add common prefixes again here if the regex didn't catch all variations, but make them specific
+    email_prefixes_as_words = ["fw", "fwd", "re", "aw"]
     
-    temp_title_for_x_check = title_lower
-    for phrase in meeting_phrases: # Remove only meeting phrases first
-        temp_title_for_x_check = temp_title_for_x_check.replace(phrase, " ") # Replace with space
+    phrases_to_remove = nbh_entities + meeting_phrases + email_prefixes_as_words
 
-    # Consolidate multiple spaces
+    # 3. Specific "BRAND X NBH_ENTITY" handling (keep this, it's good for those cases)
+    temp_title_for_x_check = title_lower_for_processing
+    # First, remove general meeting phrases that might confuse the "X" logic
+    for phrase in meeting_phrases: # Only meeting_phrases, not nbh_entities yet
+        temp_title_for_x_check = temp_title_for_x_check.replace(phrase, " ")
     temp_title_for_x_check = re.sub(r'\s+', ' ', temp_title_for_x_check).strip()
     
     extracted_from_x_pattern = False
-    for nbh_ent in nbh_entities:
-        # Pattern: "brand x nbh_ent" (allow optional spaces around x)
+    for nbh_ent in nbh_entities: # Now check against NBH entities in X pattern
+        # Pattern: "brand x nbh_ent"
         match = re.search(rf'^(.*?)\s*x\s*{re.escape(nbh_ent)}', temp_title_for_x_check, re.IGNORECASE)
         if match and match.group(1).strip():
             candidate = match.group(1).strip()
-            # Clean this candidate further from any remaining NBH entities or general meeting phrases
-            for p_to_remove in phrases_to_remove:
-                candidate = candidate.replace(p_to_remove, " ").strip()
-            candidate = re.sub(r'\s+', ' ', candidate).strip() # Consolidate spaces
-            if candidate:
-                brand_name = candidate.title()
-                extracted_from_x_pattern = True
-                break
+            for p_to_remove in phrases_to_remove: candidate = candidate.replace(p_to_remove, " ")
+            candidate = re.sub(r'\s+', ' ', candidate).strip()
+            if candidate and len(candidate) > 1: brand_name_from_title = candidate.title(); extracted_from_x_pattern = True; break
         
         # Pattern: "nbh_ent x brand"
         match = re.search(rf'^{re.escape(nbh_ent)}\s*x\s*(.*)', temp_title_for_x_check, re.IGNORECASE)
         if match and match.group(1).strip():
             candidate = match.group(1).strip()
-            for p_to_remove in phrases_to_remove:
-                candidate = candidate.replace(p_to_remove, " ").strip()
+            for p_to_remove in phrases_to_remove: candidate = candidate.replace(p_to_remove, " ")
             candidate = re.sub(r'\s+', ' ', candidate).strip()
-            if candidate:
-                brand_name = candidate.title()
-                extracted_from_x_pattern = True
-                break
-        if extracted_from_x_pattern:
-            break
+            if candidate and len(candidate) > 1: brand_name_from_title = candidate.title(); extracted_from_x_pattern = True; break
+        if extracted_from_x_pattern: break
 
-    # 3. If not extracted by "X" pattern, proceed with general cleaning and splitting
-    current_candidate = title_lower # Start fresh for general processing
+    # 4. General cleaning and splitting if "X" pattern didn't yield a result
     if not extracted_from_x_pattern:
-        # Remove all defined phrases (NBH entities and meeting phrases)
-        for phrase in phrases_to_remove:
-            current_candidate = current_candidate.replace(phrase, " ") # Replace with space to maintain separation
+        current_candidate_text = title_lower_for_processing # Start with prefix-cleaned title
+        for phrase in phrases_to_remove: # Remove all unwanted phrases
+            current_candidate_text = current_candidate_text.replace(phrase, " ")
+        current_candidate_text = re.sub(r'\s+', ' ', current_candidate_text).strip()
 
-        # Consolidate multiple spaces that might have resulted from replacements
-        current_candidate = re.sub(r'\s+', ' ', current_candidate).strip()
-
-        # Define a more comprehensive list of separators.
-        # Order can matter. Regex `|` is OR. `\s*` allows zero or more spaces around separators.
-        # `re.escape` is important for special characters in separators like `.`
-        # Added `<>` and `_` to separators.
-        separator_pattern = r'\s*(?:/|-|ft\.|with|and|&|x|:|<>|_)\s*'
+        # Separators: Added <> and ensuring _ is treated as a separator
+        # The order of separators in regex can matter. Let's try to split by more definitive structural separators first.
+        # Then, if a part still contains other noise, it might be cleaned.
+        # Split by one separator at a time, prioritizing more structural ones.
         
-        potential_parts = re.split(separator_pattern, current_candidate, flags=re.IGNORECASE)
+        # Try common structural separators first that clearly divide Brand from NBH/discussion type
+        parts = []
+        if "<>" in current_candidate_text:
+            temp_parts = [p.strip() for p in current_candidate_text.split("<>", 1)]
+            # Prefer the part that is NOT an NBH entity
+            if len(temp_parts) == 2:
+                if temp_parts[0].lower() in nbh_entities and temp_parts[1]: parts = [temp_parts[1]]
+                elif temp_parts[1].lower() in nbh_entities and temp_parts[0]: parts = [temp_parts[0]]
+                else: parts = [p for p in temp_parts if p] # Take non-empty parts
+            elif len(temp_parts) == 1: parts = [temp_parts[0].replace("<>","").strip()]
+        elif " - " in current_candidate_text: # Note space around hyphen
+            parts = [p.strip() for p in current_candidate_text.split(" - ", 1)]
+        elif "_" in current_candidate_text:
+             parts = [p.strip() for p in current_candidate_text.split("_", 1)]
+        elif "/" in current_candidate_text:
+             parts = [p.strip() for p in current_candidate_text.split("/", 1)]
+        elif ":" in current_candidate_text:
+             parts = [p.strip() for p in current_candidate_text.split(":", 1)]
+
+        potential_brand_candidate = ""
+        valid_candidate_parts = []
+        if parts: # If structural split yielded something
+            for p_candidate in parts:
+                p_clean = p_candidate.strip()
+                if p_clean and len(p_clean) > 1 and p_clean.lower() not in phrases_to_remove:
+                    valid_candidate_parts.append(p_clean)
+            if valid_candidate_parts:
+                potential_brand_candidate = valid_candidate_parts[0] # Take the first good part after structural split
         
-        # Filter out empty strings and very short parts after splitting
-        valid_parts = [part.strip() for part in potential_parts if part.strip() and len(part.strip()) > 1] # Min length 2 for a part
+        if not potential_brand_candidate and current_candidate_text: # Fallback to whole cleaned text if structural split failed
+            potential_brand_candidate = current_candidate_text
 
-        if valid_parts:
-            # Often, the first part is the brand name if separators are used correctly.
-            # However, we also need to consider if a part itself IS a meeting phrase after splitting.
-            for part in valid_parts:
-                # Check if this part itself is one of the phrases we want to ignore (even after splitting)
-                is_a_meeting_phrase = False
-                for mp in meeting_phrases: # Check only against meeting_phrases here
-                    if part.lower() == mp.lower():
-                        is_a_meeting_phrase = True
-                        break
-                if not is_a_meeting_phrase and len(part) > 1 : # Re-check length
-                     # Remove any trailing non-alphanumeric from the chosen part (e.g. trailing month name if it got stuck)
-                    clean_part = re.sub(r'[^a-zA-Z0-9\s]+$', '', part).strip() # Remove trailing non-alphanum, non-space
-                    # Check if the part is a month name or common day/time terms (to avoid "June" as brand)
-                    month_names = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
-                                   "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "pm", "am"]
-                    if clean_part.lower() not in month_names and not clean_part.isdigit():
-                        brand_name = clean_part.title()
-                        break 
-        elif current_candidate and len(current_candidate) > 1 and not current_candidate.isdigit(): # No separators found, use the whole cleaned candidate
-            brand_name = current_candidate.title()
 
-    # 4. Final checks and fallback to domain names
-    is_brand_name_generic_or_unknown = (
-        brand_name == "Unknown Brand" or
-        len(brand_name) <= 1 or # Allow single letter brands if they pass other checks
-        brand_name.lower() in phrases_to_remove # Check against full list again
+        # Remove any remaining general meeting phrases from this candidate
+        potential_brand_candidate = potential_brand_candidate.strip()
+        for phrase in meeting_phrases: # One last pass with meeting_phrases
+            potential_brand_candidate = potential_brand_candidate.replace(phrase.lower(), " ").strip() # ensure phrase is lower for replace
+        potential_brand_candidate = re.sub(r'\s+', ' ', potential_brand_candidate).strip()
+        
+        # Remove leading/trailing junk that isn't alphanumeric or a common brand char (like '.')
+        potential_brand_candidate = re.sub(r'^[^\w\.]+', '', potential_brand_candidate) 
+        potential_brand_candidate = re.sub(r'[^\w\.]+$', '', potential_brand_candidate)
+        potential_brand_candidate = potential_brand_candidate.strip()
+
+        month_names = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
+                       "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "pm", "am"]
+        
+        if potential_brand_candidate and len(potential_brand_candidate) > 1 and \
+           potential_brand_candidate.lower() not in month_names and \
+           not potential_brand_candidate.isdigit():
+            brand_name_from_title = potential_brand_candidate.title()
+
+    # --- DECISION POINT: Use title-derived name or domain-derived name ---
+    final_brand_name = "Unknown Brand"
+
+    # Criteria for a "good" brand name from title:
+    # Not "Unknown Brand", length > 2 (e.g. not "Fw" if "fw" was not in phrases_to_remove),
+    # not just a generic meeting phrase.
+    is_title_brand_good = (
+        brand_name_from_title != "Unknown Brand" and
+        len(brand_name_from_title) > 3 and # Increased min length for a "good" title brand
+        brand_name_from_title.lower() not in phrases_to_remove and
+        not any(brand_name_from_title.lower().startswith(p) for p in ["the ", "a ", "an "]) and
+        not (len(brand_name_from_title.split()) == 1 and len(brand_name_from_title) <= 3 and brand_name_from_title.lower() in email_prefixes_as_words) # Avoid "Fw" if it's 2-3 chars
     )
+    # Also check it's not JUST one of the email prefixes if they weren't fully removed
+    if brand_name_from_title.lower() in email_prefixes_as_words: # e.g. if it ended up as just "Fw"
+        is_title_brand_good = False
 
-    if is_brand_name_generic_or_unknown and brand_name_candidates_from_domain:
-        # Check if domain candidates are not too generic
-        filtered_domain_candidates = [
-            domain.title() for domain in brand_name_candidates_from_domain 
-            if domain.lower() not in phrases_to_remove and len(domain) > 1
-        ]
-        if filtered_domain_candidates:
-            brand_name = " / ".join(sorted(filtered_domain_candidates))
-        elif brand_name_candidates_from_domain: # Fallback to original if all were filtered
-            brand_name = " / ".join(sorted(list(brand_name_candidates_from_domain)))
-
+    if is_title_brand_good:
+        final_brand_name = brand_name_from_title
+    elif brand_name_candidates_from_domain: # If title is not good, but we have domain candidates
+        final_brand_name = " / ".join(sorted(list(brand_name_candidates_from_domain)))
+    else: # If title is not good, and no domain candidates, use whatever title parsing gave (even if it's "Fw")
+          # Or revert to "Unknown Brand" if brand_name_from_title is also "Unknown Brand"
+        final_brand_name = brand_name_from_title if brand_name_from_title != "Unknown Brand" else "Unknown Brand"
 
     # Final validation of extracted brand_name
-    if brand_name == "Unknown Brand" or \
-       len(brand_name) <= 1 and brand_name.lower() not in ['x'] or \
-       (len(brand_name) > 1 and brand_name.lower() in phrases_to_remove): # Check if it's purely a phrase to remove
-        return "AMBIGUOUS_TITLE"
-
+    if final_brand_name == "Unknown Brand" or \
+       (len(final_brand_name) <= 2 and final_brand_name.lower() not in ['x', 'k&n']) or \
+       (len(final_brand_name) > 1 and final_brand_name.lower() in phrases_to_remove) or \
+       (len(final_brand_name.split()) == 1 and len(final_brand_name) <=3 and final_brand_name.lower() in email_prefixes_as_words) :
+        
+        # If it's still bad, and we had domain candidates but didn't use them because title gave *something* (like "Fw")
+        # let's try the domain candidates one last time.
+        if brand_name_candidates_from_domain: # One last chance for domains if current final_brand_name is bad
+            candidate_from_domain = " / ".join(sorted(list(brand_name_candidates_from_domain)))
+            if candidate_from_domain.strip() and len(candidate_from_domain.strip()) > 2: # Check if domain candidate is decent
+                final_brand_name = candidate_from_domain
+            else:
+                return "AMBIGUOUS_TITLE"
+        else:
+            return "AMBIGUOUS_TITLE"
+    # If we reach here, we have a final brand name to use
     return {
         'id': event_id, 'title': summary, 'start_time_obj': start_time_obj,
         'start_time_str': start_time_obj.strftime("%Y-%m-%d %I:%M %p %Z (%A)"),
-        'location': location, 'description': description, 'nbh_attendees': nbh_attendees,
-        'brand_attendees_info': brand_attendees_info, 'brand_name': brand_name.strip().title(), # Ensure title case and stripped
+        'location': location, 'description': description, 
+        'nbh_attendees': nbh_attendees, # This should be the human NBH attendees
+        'brand_attendees_info': brand_attendees_info, 
+        'brand_name': final_brand_name.strip().title(),
         'is_event_description_present_for_tagging': bool(event.get('description'))
     }
-
 
 # --- Gemini LLM Integration ---
 def configure_gemini():
@@ -1280,7 +1341,7 @@ Pre-Meeting Brief
 #     - Generate a full, comprehensive brief as if this is the first major engagement.
 
 
-Part 1: Concise Executive Summary (keep the concise executive summary strictly below 250 words)
+Part 1: Concise Executive Summary (keep the concise executive summary strictly below 300 words)
 
 Brand Name: {BRAND_NAME_FOR_BODY}
 
@@ -1334,7 +1395,7 @@ Example:
     ## Closing (1 min)
     - "Thank you for your time ..."
 
-Part 2: Detailed report: (keep the detailed report strictly below 600 words.)
+Part 2: Detailed report: (keep the detailed report strictly below 700 words.)
 
 #Brand: [IF NOT A DIRECT FOLLOW-UP: Small detailed report on the brand. IF DIRECT FOLLOW-UP: Brief update on any new brand developments or skip if no new info.]
 
