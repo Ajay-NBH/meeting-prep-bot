@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9.6' # Or '3.9' if you prefer
+          python-version: '3.9'
 
       # Optional: Add caching for processed_event_ids.txt if you need to persist it
       # - name: Cache processed events
