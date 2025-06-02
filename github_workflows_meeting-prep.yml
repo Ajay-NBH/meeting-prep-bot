@@ -2,13 +2,18 @@ name: Meeting Prep Bot Scheduled Run
 
 on:
   schedule:
-    # Runs every day at 6:00am UTC. Adjust as needed.
-    - cron: '0 11 * * *'
+    # Runs every day at 11:00 UTC (adjust your cron expression as needed)
+    # For every 2 hours, it would be '0 */2 * * *'
+    - cron: '0 11 * * *' # This runs once a day at 11:00 UTC
   workflow_dispatch: # Allows you to trigger manually
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
+
+    # Define environment variables at the job level to be available to all steps,
+    # or specifically within the 'run' command of a single step.
+    # For simplicity and clarity, setting them directly in the run command is often easier.
 
     steps:
       - name: Checkout repository
@@ -17,17 +22,43 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9.6'
+          python-version: '3.9.6' # Ensure this matches your local dev environment
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Meeting Prep Script
-        env:
+      - name: Create credentials.json and Run Meeting Prep Script
+        # This single step will:
+        # 1. Create credentials.json from the secret.
+        # 2. Set GOOGLE_APPLICATION_CREDENTIALS (scoped to this run block).
+        # 3. Run your Python script with all necessary environment variables.
+        env: # Environment variables for this specific step
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           NBH_GDRIVE_FOLDER_ID: ${{ secrets.NBH_GDRIVE_FOLDER_ID }}
-          # Add other secrets/env vars here as needed
+          # GOOGLE_APPLICATION_CREDENTIALS will be set by the script commands below
         run: |
-          python meeting-prep_running_version.py
+          echo "Creating credentials.json from secret..."
+          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON_CONTENT }}" > credentials.json
+          
+          echo "Setting GOOGLE_APPLICATION_CREDENTIALS environment variable..."
+          export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/credentials.json" # This export is for THIS run block
+          
+          echo "GOOGLE_APPLICATION_CREDENTIALS is set to: $GOOGLE_APPLICATION_CREDENTIALS"
+          echo "GEMINI_API_KEY is set (length): ${#GEMINI_API_KEY}" # Check if it's populated
+          echo "NBH_GDRIVE_FOLDER_ID is set to: $NBH_GDRIVE_FOLDER_ID"
+          
+          echo "Verifying credentials.json file..."
+          ls -l credentials.json
+          cat credentials.json # Optional: print content for debugging (be careful if logs are public)
+
+          echo "Running Python script: meeting-prep_running_version.py"
+          python meeting-prep_running_version.py # Replace with your actual script name
+
+      - name: Clean up credentials file
+        if: always() # Ensures this step runs even if the script fails
+        run: |
+          echo "Cleaning up credentials.json..."
+          rm -f credentials.json
+          echo "Cleaned up credentials.json"
