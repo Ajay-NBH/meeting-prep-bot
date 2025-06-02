@@ -6,3 +6,4 @@ python-pptx
 openpyxl
 PyMuPDF
 markdown
+google-generativeai
