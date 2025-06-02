@@ -87,28 +87,101 @@ def parse_names_from_cell_helper(cell_value_str):
     return names
 
 # --- Google Authentication and Service Building ---
-def get_google_service(service_name, version, scopes_list, token_filename):
+def get_google_service(service_name, version, scopes_list, token_filename_base_for_local_storage): # Changed last param name for clarity
     creds = None
-    if os.path.exists(token_filename):
-        creds = Credentials.from_authorized_user_file(token_filename, scopes_list)
+    # Construct the specific local token filename (e.g., token_brandvmeet_calendar.json)
+    # This is used for local development fallback and saving tokens locally.
+    local_token_file_path = f"{token_filename_base_for_local_storage}_{service_name.lower()}.json"
+
+    # --- Attempt 1: Load from specific environment variable for the service (for CI) ---
+    # Construct the expected environment variable name, e.g., GOOGLE_TOKEN_JSON_CALENDAR
+    token_env_var_name = f"GOOGLE_TOKEN_JSON_{service_name.upper()}"
+    token_json_string_from_env = os.getenv(token_env_var_name)
+
+    if os.getenv('CI') == 'true' and token_json_string_from_env: # Check 'CI' env var and if token string exists
+        print(f"CI environment detected. Attempting to load credentials for {service_name} from env var: {token_env_var_name}")
+        try:
+            token_info = json.loads(token_json_string_from_env)
+            # The token_info from your stored JSON should contain client_id, client_secret, and refresh_token,
+            # which are needed for the refresh mechanism by the Credentials object.
+            creds = Credentials.from_authorized_user_info(token_info, scopes_list)
+            print(f"Successfully loaded credentials for {service_name} from environment variable.")
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON from {token_env_var_name} for {service_name}: {e}")
+            creds = None
+        except Exception as e:
+            print(f"Generic error loading credentials for {service_name} from environment variable {token_env_var_name}: {e}")
+            creds = None # Fallback
+
+    # --- Attempt 2: Load from local token file (for local development or if CI load failed) ---
+    if not creds and os.path.exists(local_token_file_path):
+        print(f"Loading credentials for {service_name} from local file: {local_token_file_path}")
+        try:
+            creds = Credentials.from_authorized_user_file(local_token_file_path, scopes_list)
+        except Exception as e:
+            print(f"Error loading credentials from {local_token_file_path} for {service_name}: {e}")
+            creds = None
+
+    # --- Attempt 3 & 4: Refresh or Run Interactive Flow ---
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
+            print(f"Token for {service_name} is expired. Refreshing...")
             try:
                 creds.refresh(Request())
-            except Exception as e:
-                print(f"Error refreshing token for {service_name}: {e}")
-                creds = None # Force re-authentication
-        if not creds: # Either no token or refresh failed
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, scopes_list)
-            creds = flow.run_local_server(port=0)
-        with open(token_filename, 'w') as token:
-            token.write(creds.to_json())
+                print(f"Token for {service_name} refreshed successfully.")
+                # If refreshed successfully in a non-CI environment, save it back to the local file
+                if not os.getenv('CI') == 'true':
+                    try:
+                        with open(local_token_file_path, 'w') as token_file:
+                            token_file.write(creds.to_json())
+                        print(f"Saved refreshed token for {service_name} to {local_token_file_path}")
+                    except Exception as e_save:
+                        print(f"Error saving refreshed token for {service_name} to {local_token_file_path}: {e_save}")
+            except Exception as e_refresh:
+                print(f"Error refreshing token for {service_name}: {e_refresh}")
+                # If refresh fails in CI, it's a critical issue as there's no interactive fallback.
+                if os.getenv('CI') == 'true':
+                    print(f"FATAL: Token refresh failed for {service_name} in CI. Stored token might be invalid (e.g., revoked) or scopes changed.")
+                    return None
+                creds = None # Force re-authentication locally if refresh failed and not in CI
+        
+        # This block should ideally NOT be reached in a CI environment if the token env var is set correctly.
+        if not creds:
+            if os.getenv('CI') == 'true':
+                print(f"FATAL: No valid credentials for {service_name} in CI and interactive flow is disabled.")
+                print(f"       Ensure {token_env_var_name} secret is set correctly and contains valid token JSON.")
+                return None # Critical failure in CI
+
+            print(f"No valid credentials for {service_name}. Attempting interactive local server flow...")
+            # Ensure CREDENTIALS_FILE ('credentials.json' with OAuth client_id/secret) exists for the flow
+            if not os.path.exists(CREDENTIALS_FILE):
+                print(f"FATAL: {CREDENTIALS_FILE} not found. Cannot run interactive auth flow for {service_name}.")
+                return None
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, scopes_list)
+                creds = flow.run_local_server(port=0) # This opens a browser for user consent
+                # Save the newly obtained credentials to the local token file for future runs
+                with open(local_token_file_path, 'w') as token_file:
+                    token_file.write(creds.to_json())
+                print(f"Saved new token for {service_name} (from interactive flow) to {local_token_file_path}")
+            except Exception as e_flow:
+                print(f"Error during interactive auth flow for {service_name}: {e_flow}")
+                return None
+    
+    if not creds: # Should not happen if all paths above are handled
+        print(f"Ultimately failed to obtain credentials for {service_name}.")
+        return None
+
+    # --- Build the Google API Service ---
     try:
         service = build(service_name, version, credentials=creds)
         print(f"{service_name.capitalize()} service initialized successfully.")
         return service
     except HttpError as error:
-        print(f'An error occurred building {service_name} service: {error}')
+        print(f'An HTTP error occurred building {service_name} service: {error}')
+        return None
+    except Exception as e: # Catch other potential errors during build
+        print(f'A general error occurred building {service_name} service: {e}')
         return None
     
 # --- Google Drive Functions ---
