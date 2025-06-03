@@ -1337,7 +1337,7 @@ def configure_gemini():
 YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI = """
 # NBH is a SAAS platform that digitizes all types of workflows within gated communities such as visitor entry approvals, helpdesk tickets, maintenance payments, communication and announcements etc.. We have 3 platforms, a guard app (used by guards at the gate), a resident app (used by residents in gated communities) and a admin dashboard. We operate in tier-1 cities in India, which means we are engaged with a customer segment which is very valuable to many brands.
 # We approach various companies who want to target that segment of people we have for the ads. This might be from a large national/multinational company or a small local city brand.
-# You are a world-class marketing strategist at NoBrokerHood (NBH) crafting a Pre-Meeting Brief for an upcoming client pitch for the monetization team. This function has sales team members called brand managers (BMs) that pitch digital assets (on our resident app) and physical monetization assets (society common areas that we monetize) that we have. 
+# You are a world-class marketing strategist at NoBrokerHood (NBH) crafting a Pre-Meeting Brief for an upcoming client meeting for the monetization team. This function has sales team members called brand managers (BMs) that pitch digital assets (on our resident app) and physical monetization assets (society common areas that we monetize) that we have. 
 # The goal is to prepare a comprehensive, data-driven brief that will help the BMs present a compelling case to the client.    
 Pre-Meeting Brief
 # Brand Name: {BRAND_NAME_FOR_BODY}
@@ -1349,32 +1349,96 @@ Pre-Meeting Brief
 {NBH_ATTENDEES_NAMES}
 
 # IMPORTANT: For every section, use markdown headers (##), sub-headers (###), and bullet/numbered lists. Never use asterisks (*) for bullets—use markdown dashes (-) or numbers.
-
-#The full pre meeting brief is divided into two parts.
-
-#Concise executive summary and #Detail Report
-
-# Please format each step as a markdown sub-header (e.g., `## Icebreaking (5 mins)`) followed by a short description or bullet points.
 # The total full meeting brief should not cross 6-7 pages. Remember to strictly follow the page count or line count instructions.
 
+# BEGIN INTERNAL NBH DATA SUMMARY
+{INTERNAL_NBH_DATA_SUMMARY}
+# END INTERNAL NBH DATA SUMMARY
+
 # --- CRITICAL INSTRUCTION BASED ON PREVIOUS MEETING DATA ---
-# The "Usage of Nobroker/nobrokerhood data" section below will indicate if this meeting with {BRAND_NAME_FOR_BODY}
+# The "Usage of Nobroker/nobrokerhood data" section as part of the "Internal NBH Data Summary" shared above will indicate if this meeting with {BRAND_NAME_FOR_BODY}
 # appears to be a DIRECT FOLLOW-UP to recent NBH interactions, if NBH has had OTHER PREVIOUS INTERACTIONS
 # with the brand, or if this is likely a FIRST-TIME INTERACTION.
 # ALSO, pay attention to the {MEETING_TITLE}. Keywords like "Introductory Call", "Follow-up", 
 # "June discussion", "Digital discussion", "Sampling Discussion" in the title provide strong clues
 # about the meeting's primary purpose and stage of engagement.
-# YOUR RESPONSE MUST ADAPT BASED ON ALL THIS CONTEXT:
-#   - IF A DIRECT FOLLOW-UP IS INDICATED (from previous meeting data OR title):
-#     - Part 1 (Executive Summary): Keep "Brand & Launch Synopsis" and "Client Profiles" VERY concise...
-#     - Part 1 (Suggested Meeting Flow): MUST heavily reference previous discussions or the specific topic mentioned in the title (e.g., "June campaigns", "digital strategy").
-#   - IF THE TITLE SUGGESTS A SPECIFIC FOCUS (e.g., "Sampling Discussion") even if it's a first meeting:
-#     - Tailor the "Suggested Meeting Flow" and "Proposed solution and offering" to heavily address that specific topic from the outset.
-#   - IF OTHER PREVIOUS INTERACTIONS (NOT a direct follow-up) ARE NOTED:
-#     - Use insights from past meetings...
-#   - IF NO PREVIOUS INTERACTIONS AND A GENERAL TITLE (First-time meeting):
-#     - Generate a full, comprehensive brief as if this is the first major engagement.
 
+# YOUR RESPONSE MUST ADAPT BASED ON ALL THIS CONTEXT:
+#   - IF A DIRECT FOLLOW-UP IS INDICATED (from previous meeting data AND/OR a title like "Follow-up with X"):
+#     - GENERATE THE BRIEF USING THE "DIRECT FOLLOW-UP MEETING STRUCTURE" outlined below.
+#     - Focus heavily on continuity, previous discussions, action items, and client questions from past interactions.
+#     - Standard brand synopsis, generic marketing history, and general market bifurcation become secondary or very brief.
+#   - IF OTHER PREVIOUS INTERACTIONS (NOT a direct follow-up, e.g., different context or attendees) ARE NOTED OR IT'S A FIRST-TIME INTERACTION:
+#     - Generate the brief using the "STANDARD MEETING STRUCTURE" 
+#     - Provide a comprehensive overview suitable for a new engagement or a new line of discussion.
+
+# ==========================================================================================
+# === DIRECT FOLLOW-UP MEETING STRUCTURE (Use this if a direct follow-up is identified) ===
+# ==========================================================================================
+
+## Pre-Meeting Brief for Direct Follow-Up with {BRAND_NAME_FOR_BODY}
+
+### 1. Recap of Previous Engagement & Current Status
+    - Briefly summarize the key topics, proposals, or data points from the last direct interaction.
+    - Note any decisions made or understandings reached.
+    - State the current status of the engagement leading into this meeting (e.g., "Client was to review X," "NBH was to provide Y").
+    - *Source this heavily from "Insights from Previous NBH Meetings," specifically "Key Discussion Points," and "Action Items" from {INTERNAL_NBH_DATA_SUMMARY}.*
+
+### 2. Key Objectives for This Follow-Up Meeting
+    - List 3-4 specific, actionable objectives for THIS meeting.
+    - These should aim to progress the discussion, address pending items, or move towards a decision/pilot.
+    - Example: "Finalize scope for pilot campaign," "Address client's questions on Z," "Present revised proposal based on feedback."
+
+### 3. Client's Key Questions/Concerns (from previous meeting)
+    - List any significant questions or concerns raised by the client in the previous meeting that need to be addressed.
+    - For each, briefly outline the NBH response or how it will be tackled in this meeting.
+    - *Source this from "Key Questions Raised by Client" in {INTERNAL_NBH_DATA_SUMMARY}.*
+    - If no specific questions were logged, this section can be brief or state "No outstanding questions noted from previous discussion; this meeting will focus on next steps."
+
+### 4. Review of Action Items from Previous Meeting
+    - Present a table or clear list of action items from the last meeting.
+    - For each action item:
+        - State the Action Item.
+        - Indicate who was Responsible (Client or NBH).
+        - Briefly note Progress/Status by NoBrokerHood.
+        - Note any Pending input/action from the Client.
+    - *Source this directly from "Action Items (Relevant for Follow-up)" in {INTERNAL_NBH_DATA_SUMMARY}.*
+
+### 5. Revised/Tailored Proposed Solution and Offering for This Follow-Up
+    - Present 2-4 highly tailored solutions or next steps.
+    - These MUST directly build upon the previous discussion, address client feedback, or align with the agreed-upon direction.
+    - For each concept:
+        - Give it a brief, compelling title (e.g., "Lenskart Clear Vision Rewards").
+        - Describe the solution concisely.
+        - Explicitly state its "Alignment with Client Feedback/Previous Discussion" (e.g., "Directly addresses interest in coupon distribution," "Leverages client's focus on offline experience").
+    - *This section should reflect an evolution of the previous proposals, not a fresh pitch unless the context changed dramatically.*
+    - *Reference relevant NBH assets (digital, physical, data) only as they support these specific, evolved solutions.*
+
+### 6. Personal History and Persona Analysis (Key Brand Attendees)
+    - For each key brand attendee *who was also present in the previous relevant meeting*:
+        - **Personal History:** If available from previous brief notes or new quick search, provide a brief professional summary.
+        - **Persona Analysis (from previous interaction):** Based on their contributions, questions, and concerns in the *previous meeting*, describe their likely priorities, decision-making style, or focus areas relevant to this follow-up. (e.g., "Appeared data-driven, focused on ROI," "Showed keen interest in technical feasibility").
+    - If new key attendees are joining, provide standard Personal History/Persona analysis for them.
+
+### 7. Suggested Meeting Flow for This Follow-Up (Concise)
+    - Outline a very brief meeting flow (e.g., 3-4 key stages).
+    - Emphasis should be on addressing action items, discussing tailored solutions, and agreeing on concrete next steps.
+    - Example:
+        - Welcome & Quick Recap of Today's Focus (2 mins)
+        - Addressing Pending Action Items & Client Questions (10 mins)
+        - Discussion of Tailored Solutions/Proposals (10 mins)
+        - Agreement on Next Steps & Timelines (5 mins)
+        - Closing (3 mins)
+
+### 8. Key Talking Points/Reminders for NBH Team
+    - 2-3 bullet points for the NBH team to keep in mind during this specific follow-up.
+    - e.g., "Reiterate benefit X based on client's previous concern," "Be prepared to discuss technical detail Y if asked," "Aim to secure commitment for Z."
+
+# --- END OF DIRECT FOLLOW-UP MEETING STRUCTURE ---
+
+# =====================================================================================
+# === STANDARD MEETING STRUCTURE (Use this if NOT a direct follow-up, or first time) ===
+# =====================================================================================
 
 Part 1: Concise Executive Summary (keep the concise executive summary strictly below 300 words)
 
@@ -1402,8 +1466,6 @@ Brand Name: {BRAND_NAME_FOR_BODY}
 
 Please format each step as a markdown sub-header (e.g., `## Icebreaking (5 mins)`) followed by a short description or bullet points.
 
-# [CRITICAL: IF A DIRECT FOLLOW-UP, this flow MUST focus on previous action items, unresolved questions, and next steps from the provided "Action Items (Relevant for Follow-up)" data.
-# IF NOT A FOLLOW-UP, use the example flow but tailor opening and need-finding based on any prior knowledge.]
 
 Example:
 
@@ -1416,7 +1478,7 @@ Example:
     ## Deck Presentation (8 mins)
     - Present NBH's digital and physical assets ...
 
-    #Proposed solution and offering: [IF A DIRECT FOLLOW-UP: Base this heavily on previous discussions and identified needs/action items. Briefly describe creative co-branded solutions or offerings relevant to the client and NoBrokerHood. Try to give atleast 5 solutions. Try to check on the web on some creative marketing campaigns which can be achieved through our collaboration(keep in mind our offerings while giving suggestions.), Keep the points precise  and concise as if you are presenting to a CXO. Keep each description to a maximum of 2 lines. Also check the 3rd slide in the canva ppt. Those are the offerings in the parent company Nobroker.com. We can offer the data in those various verticals as solutioning  to the company and leverage it to get them on board to Nobrokerhood.]
+    #Proposed solution and offering: [Briefly describe creative co-branded solutions or offerings relevant to the client and NoBrokerHood. Try to give atleast 5 solutions. Try to check on the web on some creative marketing campaigns which can be achieved through our collaboration(keep in mind our offerings while giving suggestions.), Keep the points precise  and concise as if you are presenting to a CXO. Keep each description to a maximum of 2 lines. Also check the the canva pdf master deck. Those are the offerings in the parent company Nobroker.com. We can offer the data in those various verticals as solutioning  to the company and leverage it to get them on board to Nobrokerhood.]
     
     Example Solution 1: [Brief Title/Concept: Description]
     Example Solution 2: [Brief Title/Concept: Description]
@@ -1432,7 +1494,7 @@ Example:
 
 Part 2: Detailed report: (keep the detailed report strictly below 700 words.)
 
-#Brand: [IF NOT A DIRECT FOLLOW-UP: Small detailed report on the brand. IF DIRECT FOLLOW-UP: Brief update on any new brand developments or skip if no new info.]
+#Brand: [IF NOT A DIRECT FOLLOW-UP: Small detailed report on the brand]
 
 a) categories that the brand exist in
 
@@ -1450,9 +1512,6 @@ e) What the brand is doing these days and the areas where they are focusing more
     # Consider the {MEETING_TITLE} alongside this data.
     # This includes:
     #   - Insights from PREVIOUS NBH MEETINGS with {BRAND_NAME_FOR_BODY} (if any). Pay close attention to:
-    #       - If the notes indicate a "DIRECT FOLLOW-UP".
-    #       - "Key Discussion Points" from past meetings.
-    #       - "Action Items (Relevant for Follow-up)" - CRITICAL if this is a follow-up.
     #       - "Key Questions Raised by Client" in past meetings.
     #       - "Observed Brand Traits", "Identified Customer Needs", "Client Pain Points Discussed".
     #     Synthesize these previous meeting insights to inform the entire brief, especially the meeting flow and proposed solutions.    
@@ -1461,18 +1520,14 @@ e) What the brand is doing these days and the areas where they are focusing more
     #   - Historical Campaign data for {BRAND_NAME_FOR_BODY} or similar brands/industries.
     #   - A description of available NoBroker.com platform metrics (e.g., leads, user data).
     #
-    # BEGIN INTERNAL NBH DATA SUMMARY
-    {INTERNAL_NBH_DATA_SUMMARY}
-    # END INTERNAL NBH DATA SUMMARY
+
     # Your task is to synthesize this information:
     #
     # 0. Previous Meeting Insights (If data provided under "Insights from Previous NBH Meetings"):
-    #    a. Determine if the current meeting is a direct follow-up based on the notes.
-    #    b. If it is a direct follow-up, highlight any "Action Items (Relevant for Follow-up)" that need to be addressed.
-    #    c. Summarize any "Key Questions Raised by Client", "Observed Brand Traits", "Identified Customer Needs", or "Client Pain Points Discussed"
+    #    a. Summarize any "Key Questions Raised by Client", "Observed Brand Traits", "Identified Customer Needs", or "Client Pain Points Discussed"
     #       from past meetings that are relevant for the upcoming discussion.
-    #    d. This understanding should PERVADE the rest of your analysis and suggestions.
-    #    e. If no previous meetings are noted, assume this is a first-time interaction and proceed accordingly.
+    #    b. This understanding should PERVADE the rest of your analysis and suggestions.
+    #    c. If no previous meetings are noted, assume this is a first-time interaction and proceed accordingly.
     # 1. Case Studies (from section "Relevant Case Study Slides"): Try to use the latest case study slides provided
     #    For EACH "Case Study Slide X" provided:
     #    a. Identify the **Case Study Brand Name** (often in the title or a "Brand:" field).
