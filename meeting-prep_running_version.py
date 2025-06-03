@@ -1396,13 +1396,14 @@ Pre-Meeting Brief
     - If no specific questions were logged, this section can be brief or state "No outstanding questions noted from previous discussion; this meeting will focus on next steps."
 
 ### 4. Review of Action Items from Previous Meeting
-    - Present a table or clear list of action items from the last meeting.
-    - For each action item:
-        - State the Action Item.
-        - Indicate who was Responsible (Client or NBH).
-        - Briefly note Progress/Status by NoBrokerHood.
-        - Note any Pending input/action from the Client.
-    - *Source this directly from "Action Items (Relevant for Follow-up)" in {INTERNAL_NBH_DATA_SUMMARY}.*
+    - *Source this directly from "Action Items (Relevant for Follow-up)" within the INTERNAL_NBH_DATA_SUMMARY provided above.*
+    - For EACH action item from the previous meeting, clearly list the following in a bulleted format. Ensure each piece of information is clearly labeled:
+        - **Action Item:** [State the full action item text]
+        - **Responsible:** [Indicate Client or NBH, or specific names if available in the source data]
+        - **Progress/Status by NoBrokerHood:** [Describe NBH's progress or current status on this item]
+        - **Pending Input/Action from Client:** [Describe what is needed from the client for this item, if anything]
+    - Present each action item as a distinct set of these four bullet points.
+    - If no action items were logged from the previous meeting, state: "No specific action items were formally logged from the previous meeting."
 
 ### 5. Revised/Tailored Proposed Solution and Offering for This Follow-Up
     - Present 2-4 highly tailored solutions or next steps.
