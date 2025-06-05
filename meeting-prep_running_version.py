@@ -1187,9 +1187,15 @@ def extract_meeting_info(event, agent_email_global, nbh_service_accounts_to_excl
     processed_title = summary.lower()
     processed_title = re.sub(r'\s+', ' ', processed_title).strip()
 
-    # Remove common email subject prefixes
-    processed_title = re.sub(r'^\s*(fw|fwd|re|aw|fwd:|re:|aw:|fw:)\s*:?\s*', '', processed_title, flags=re.IGNORECASE).strip()
-    processed_title = re.sub(r'^\s*(fw|fwd|re|aw)\s+', '', processed_title, flags=re.IGNORECASE).strip()
+    # Remove common email subject prefixes - CORRECTED
+    # This regex looks for the prefixes as whole words, optionally followed by a colon
+    # and then whitespace.
+    processed_title = re.sub(r'^\s*\b(fw|fwd|re|aw)\b\s*:?\s*', '', processed_title, flags=re.IGNORECASE).strip()
+    
+    # If the above didn't catch it (e.g., "FW:NoBroker..." without space after colon,
+    # or just "FW NoBroker..."), this second pass helps clean up the prefix word itself
+    # if it's at the very beginning followed by a space.
+    processed_title = re.sub(r'^\s*\b(fw|fwd|re|aw)\b\s+', '', processed_title, flags=re.IGNORECASE).strip()
     
     # Remove times/dates (simplified, assuming they are at the end or clearly separated)
     # This is heuristic and might need adjustment if times are embedded complexly.
