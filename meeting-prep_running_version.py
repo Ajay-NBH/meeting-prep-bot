@@ -1354,12 +1354,15 @@ Pre-Meeting Brief
 # Attendee from NoBrokerHood (NBH):
 {NBH_ATTENDEES_NAMES}
 
-# IMPORTANT: For every section, use markdown headers (##), sub-headers (###), and bullet/numbered lists. Never use asterisks (*) for bullets—use markdown dashes (-) or numbers.
-# The total full meeting brief should not cross 6-7 pages. Remember to strictly follow the page count or line count instructions.
-
+NBH Internal data summary below:
 # BEGIN INTERNAL NBH DATA SUMMARY
 {INTERNAL_NBH_DATA_SUMMARY}
 # END INTERNAL NBH DATA SUMMARY
+
+# IMPORTANT: For every section, use markdown headers (##), sub-headers (###), and bullet/numbered lists. Never use asterisks (*) for bullets—use markdown dashes (-) or numbers.
+# The total full meeting brief should not cross 6-7 pages. Remember to strictly follow the page count or line count instructions.
+
+
 
 # --- CRITICAL INSTRUCTION BASED ON PREVIOUS MEETING DATA ---
 # The "Usage of Nobroker/nobrokerhood data" section as part of the "Internal NBH Data Summary" shared above will indicate if this meeting with {BRAND_NAME_FOR_BODY}
@@ -1501,19 +1504,6 @@ Example:
 
 Part 2: Detailed report: (keep the detailed report strictly below 700 words.)
 
-#Brand: [IF NOT A DIRECT FOLLOW-UP: Small detailed report on the brand]
-
-a) categories that the brand exist in
-
-b) Target audience of the brand
-
-c) Peak seasons for the brand where each category sales happen
-
-d) Brand persona
-
-e) What the brand is doing these days and the areas where they are focusing more lately
-
-
 # Usage of Nobroker/nobrokerhood data: 
     # The following is a summary of relevant internal data from NoBrokerHood's Google Drive. Use this information to identify relevant data points for {BRAND_NAME_FOR_BODY}.
     # Consider the {MEETING_TITLE} alongside this data.
@@ -1534,8 +1524,9 @@ e) What the brand is doing these days and the areas where they are focusing more
     #    a. Summarize any "Key Questions Raised by Client", "Observed Brand Traits", "Identified Customer Needs", or "Client Pain Points Discussed"
     #       from past meetings that are relevant for the upcoming discussion.
     #    b. This understanding should PERVADE the rest of your analysis and suggestions.
-    #    c. If no previous meetings are noted, assume this is a first-time interaction and proceed accordingly.
-    # 1. Case Studies (from section "Relevant Case Study Slides"): Try to use the latest case study slides provided
+    #    c. If no previous meetings are noted, assume this is a first-time interaction and skip this section. 
+    # 1. Case Studies (from section "Relevant Case Study Slides"): Try to use the latest case study slides provided. The case studies should be relevant for the brand, from the same industry or for same use case.
+    #    Eg: For Easemytrip (Travel Agency) the relevant case studies would be for any travel or tourism related brand (like lufthansa / Mahindra Holidays / Makemytrip)
     #    For EACH "Case Study Slide X" provided:
     #    a. Identify the **Case Study Brand Name** (often in the title or a "Brand:" field).
     #    b. Extract **Campaign Introduction/Objective/Description** (look for "Introduction:", "Description:", or similar phrasing).
@@ -1561,9 +1552,21 @@ e) What the brand is doing these days and the areas where they are focusing more
     #
     # 3. NoBroker.com Platform Metrics (from section "NoBroker.com Platform Metrics"):
     #    ( You have access to the nobroker data like packers and movers as well as nobrokerhood data like number of maids, pets data etc. Provide the relevant data which we can use to present for this brand {BRAND_NAME_FOR_BODY}. Eg: if its a pet brand, total pet count can be provided, pet count in various cities can be provided to show where the targetting can be done etc. If it is a brand which can be purchased when people move accomodations or cities, move-in move-out data can be cited)
-    #
+    #    These need to be separate bullet points
     # Present these insights concisely as actionable data points for the sales team. Ensure to reference the slide number when discussing a specific case study.
     # If information for a specific field (e.g., ROI) is not explicitly found on a slide, state "Not specified on slide." Do not invent data.
+
+#Brand: [IF NOT A DIRECT FOLLOW-UP: Small detailed report on the brand]
+
+a) categories that the brand exist in
+
+b) Target audience of the brand
+
+c) Peak seasons for the brand where each category sales happen
+
+d) Brand persona
+
+e) What the brand is doing these days and the areas where they are focusing more lately
 
 #Recent Marketing history: List all the recent marketing history of the brand be it be campaigns or activities. Analyse the recent marketing campaigns of the brand as if you are a McKinsey or a BCG consultant and give me the analysis on various points, like the cohorting they are focusing on, etc. Don’t make a big report. Keep the points precise  and concise as if you are presenting to a CXO. Keep each point to a max of 2 lines.
 
