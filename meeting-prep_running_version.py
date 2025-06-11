@@ -494,7 +494,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
 
     EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP = {
         AGENT_EMAIL.lower().split('@')[0],
-        "pia.brand"
+        "pia.brand","pia"
     }
 
     current_nbh_attendee_names_for_followup_check = {
@@ -922,14 +922,28 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
 
                         prev_client_attendee_names = parse_names_from_cell_helper(prev_client_names_str)
                         prev_nbh_attendee_names_from_sheet = parse_names_from_cell_helper(prev_nbh_names_str)
-                        prev_nbh_attendee_names_for_followup_check = {name for name in prev_nbh_attendee_names_from_sheet if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP}
+                        prev_nbh_attendee_names_for_followup_check = {name for name in prev_nbh_attendee_names_from_sheet if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP and name != AGENT_EMAIL.lower().split('@')[0]}
+
+
+                        print(f"    DEBUG FOLLOW-UP CHECK FOR PREVIOUS MEETING (Brand: {prev_meeting_brand_name_from_sheet}):")
+                        print(f"        Current Meeting Title: {current_meeting_data.get('title')}") # Assuming current_meeting_data is available
+                        print(f"        Previous Meeting (Sheet) Key Discussion: {get_cell_value(key_discussion_col_idx, 'N/A')}") # Or some other identifier for the prev meeting
+
+                        print(f"        CURRENT Brand Attendees (for intersection): {current_brand_attendee_names}")
+                        print(f"        PREVIOUS Brand Attendees (from sheet, for intersection): {prev_client_attendee_names}")
+    
+                        print(f"        CURRENT NBH Attendees (for intersection, filtered): {current_nbh_attendee_names_for_followup_check}")
+                        print(f"        PREVIOUS NBH Attendees (from sheet, filtered, for intersection): {prev_nbh_attendee_names_for_followup_check}") # Use the corrected var name here
                         
                         common_brand_attendees_names = current_brand_attendee_names.intersection(prev_client_attendee_names)
                         common_nbh_attendees_names = current_nbh_attendee_names_for_followup_check.intersection(prev_nbh_attendee_names_for_followup_check)
 
                         if common_brand_attendees_names and common_nbh_attendees_names:
                             meeting_details_dict["is_direct_follow_up_candidate"] = True
-
+                            print(f"        DECISION: MARKED as direct_follow_up_candidate = True")
+                        else:
+                            # meeting_details_dict["is_direct_follow_up_candidate"] is already False by default
+                            print(f"        DECISION: direct_follow_up_candidate = False")
                         matching_previous_meetings_details.append(meeting_details_dict)
 
                 # --- Format the collected previous meeting data for the LLM ---
