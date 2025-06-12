@@ -959,37 +959,49 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                             f"**This upcoming meeting appears to be a DIRECT FOLLOW-UP based on attendee overlap with past meeting(s).** "
                             f"The brief should heavily focus on continuity, previous discussions, and action items.\n\n"
                         )
-                    else:
+                        # For direct follow-ups, include all details
+                        for mtg_data in matching_previous_meetings_details[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
+                            date_display = mtg_data["date_obj"].strftime("%Y-%m-%d") # ...
+                            original_row_index_val = mtg_data.get("original_row_info", {}).get("row_index", "N/A")
+                            note_parts = [f"### Previous Meeting on {date_display} (Row: {original_row_index_val})"]
+                            if mtg_data.get("is_direct_follow_up_candidate"): note_parts.append(" *(Potential Direct Follow-up)*\n") # This is redundant if overall is true, but fine
+                            else: note_parts.append("\n")
+
+                            if mtg_data['discussion'] != "N/A": note_parts.append(f"- **Key Discussion Points:** {mtg_data['discussion']}\n")
+                            if mtg_data['key_questions'] != "N/A": note_parts.append(f"- **Key Questions Raised by Client:** {mtg_data['key_questions']}\n")
+                            if mtg_data['brand_traits'] != "N/A": note_parts.append(f"- **Observed Brand Traits:** {mtg_data['brand_traits']}\n")
+                            if mtg_data['customer_needs'] != "N/A": note_parts.append(f"- **Identified Customer Needs:** {mtg_data['customer_needs']}\n")
+                            if mtg_data['client_pain_points'] != "N/A": note_parts.append(f"- **Client Pain Points Discussed:** {mtg_data['client_pain_points']}\n")
+                            
+                            # Always include action items if it's an overall direct follow-up context
+                            if mtg_data['actions'] != "N/A":
+                                note_parts.append(f"- **Action Items (Relevant for Follow-up):** {mtg_data['actions']}\n")
+                            
+                            note_parts.append("---\n")
+                            previous_meeting_notes_list.append("".join(note_parts))
+                    else: # NOT an overall direct follow-up
                         previous_meeting_notes_list.append(
-                            f"NBH has had previous interactions with '{current_target_brand_name}'. Key points are summarized below.\n\n"
+                            f"NBH has had previous interactions with '{current_target_brand_name}'. "
+                            f"These were separate discussions. Relevant high-level context from past interactions is noted below. " # Clarify
+                            f"This is NOT a direct continuation of specific action items from these past meetings unless otherwise indicated by the meeting title or current attendees.\n\n"
                         )
-
-                    for mtg_data in matching_previous_meetings_details[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
-                        date_display = mtg_data["date_obj"].strftime("%Y-%m-%d") if mtg_data["date_obj"] != datetime.date.min else "Date N/A"
-                        
-                        # Access the 'row_index' from the nested 'original_row_info' dictionary
-                        original_row_index_val = mtg_data.get("original_row_info", {}).get("row_index", "N/A")
-                        note_parts = [f"### Previous Meeting on {date_display} (Row: {original_row_index_val})"]
-
-                        if mtg_data.get("is_direct_follow_up_candidate"): note_parts.append(" *(Potential Direct Follow-up)*\n")
-                        else: note_parts.append("\n")
-
-                        if mtg_data['discussion'] != "N/A": note_parts.append(f"- **Key Discussion Points:** {mtg_data['discussion']}\n")
-                        if mtg_data['key_questions'] != "N/A": note_parts.append(f"- **Key Questions Raised by Client:** {mtg_data['key_questions']}\n")
-                        if mtg_data['brand_traits'] != "N/A": note_parts.append(f"- **Observed Brand Traits:** {mtg_data['brand_traits']}\n")
-                        if mtg_data['customer_needs'] != "N/A": note_parts.append(f"- **Identified Customer Needs:** {mtg_data['customer_needs']}\n")
-                        if mtg_data['client_pain_points'] != "N/A": note_parts.append(f"- **Client Pain Points Discussed:** {mtg_data['client_pain_points']}\n")
-                        
-                        # Conditionally include action items based on follow-up status
-                        if mtg_data.get("is_direct_follow_up_candidate", False) and mtg_data['actions'] != "N/A":
-                            note_parts.append(f"- **Action Items (Relevant for Follow-up):** {mtg_data['actions']}\n")
-                        elif mtg_data['actions'] != "N/A": # If not a direct follow-up, but actions exist
-                             note_parts.append(f"- **Action Items (General Context):** {mtg_data['actions']}\n")
-                        
-                        note_parts.append("---\n")
-                        previous_meeting_notes_list.append("".join(note_parts))
-
-                else:
+                        # For NON direct follow-ups, include only very high-level info, or less detail
+                        for mtg_data in matching_previous_meetings_details[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
+                            date_display = mtg_data["date_obj"].strftime("%Y-%m-%d")
+                            original_row_index_val = mtg_data.get("original_row_info", {}).get("row_index", "N/A")
+                            note_parts = [f"### Previous Interaction on {date_display} (Row: {original_row_index_val})\n"]
+                            
+                            # ONLY include very general context, AVOID specific action items unless truly generic
+                            if mtg_data['discussion'] != "N/A":
+                                note_parts.append(f"- **General Topic/Discussion:** {mtg_data['discussion'][:250]}...\n") # Truncate
+                            if mtg_data['brand_traits'] != "N/A": # Brand traits might be generically useful
+                                note_parts.append(f"- **Observed Brand Traits (General):** {mtg_data['brand_traits']}\n")
+                            # Explicitly DO NOT include 'Action Items' or 'Key Questions' if it's not a direct follow-up
+                            # unless you have a specific reason.
+                            note_parts.append(f"- Note: This was a separate past engagement. Details are for general brand context.\n")
+                            note_parts.append("---\n")
+                            previous_meeting_notes_list.append("".join(note_parts))
+                else: # No matching_previous_meetings_details
                     previous_meeting_notes_list.append(f"No previous meeting records found specifically for '{current_target_brand_name}'.\n")
                 
                 final_context_parts.append("".join(previous_meeting_notes_list))
