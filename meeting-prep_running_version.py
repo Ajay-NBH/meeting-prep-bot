@@ -44,6 +44,12 @@ NBH_GDRIVE_FOLDER_ID = os.getenv("NBH_GDRIVE_FOLDER_ID", "1rikXDq-ZyuZpUbN-ZLCsm
 
 AGENT_EMAIL = "brand.vmeet@nobroker.in" # Email of the agent account
 ADMIN_EMAIL_FOR_NOTIFICATIONS = "ajay.saini@nobroker.in" # REPLACE with your actual email
+leadership_emails = ["sristi.agarwal@nobroker.in", "rohit.c@nobroker.in"] # Add the second email
+
+EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP = {
+    AGENT_EMAIL.lower().split('@')[0],
+    "pia.brand","pia"
+}
 
 PROCESSED_EVENTS_FILE = 'processed_event_ids.txt' # Simple file-based tracking for local runs
 
@@ -452,15 +458,25 @@ def summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, f
         print(f"Error during Gemini summarization: {e}")
         return f"Error: Exception during Gemini summarization: {e}"
 
+
+
+
+
 # --- Modify get_internal_nbh_data_for_brand ---
 def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_model, 
-                                    current_target_brand_name, current_meeting_data):
+                                    current_target_brand_name, current_meeting_data,EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL):
     # ... (initial checks for services and folder ID remain) ...
     print(f"Fetching and processing internal NBH data for target brand '{current_target_brand_name}'...")
     all_files_in_folder = list_files_in_gdrive_folder(drive_service, NBH_GDRIVE_FOLDER_ID) # Ensure this is called
     
     if not all_files_in_folder: # Add check for empty list
-        return "No files found in the NBH GDrive folder.\n"
+        # Return structure consistent with success case but indicating no data
+        return {
+            "llm_summary_string": f"--- Targeted Internal NBH Data & Summaries for {current_target_brand_name} ---\n\nNo files found in the NBH GDrive folder to process.\n\n--- End of Targeted Internal NBH Data & Summaries ---\n",
+            "is_overall_direct_follow_up": False,
+            "has_previous_interactions": False,
+            "condensed_past_meetings_for_alert": []
+        }
 
     target_brand_industry = "Unknown"
     if gemini_llm_model: # Only infer if LLM is available
@@ -492,10 +508,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
     current_nbh_attendee_names = get_clean_names_from_attendee_list(current_nbh_attendees_list)
     current_brand_attendee_names = get_clean_names_from_attendee_list(current_brand_attendees_list)
 
-    EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP = {
-        AGENT_EMAIL.lower().split('@')[0],
-        "pia.brand","pia"
-    }
 
     current_nbh_attendee_names_for_followup_check = {
     name for name in current_nbh_attendee_names if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP
@@ -503,7 +515,24 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
     #print(f"  DEBUG Current NBH Names for Follow-up Check: {current_nbh_attendee_names_for_followup_check}")
     #print(f"  DEBUG Current Brand Names for Follow-up Check: {current_brand_attendee_names}")
 
-    final_context_parts = []
+    final_context_parts_for_llm = [] # Accumulates strings for the LLM from ALL files
+    
+    # This list will store parsed data from the NBH_Previous_meetings sheet
+    matching_previous_meetings_details_accumulator = [] 
+
+    # --- Column indices for the NBH_Previous_meetings sheet ---
+    # Initialize to -1, they will be set when the sheet is processed
+    prev_meetings_brand_col_idx = -1
+    prev_meetings_date_col_idx = -1
+    prev_meetings_client_participants_col_idx = -1
+    prev_meetings_nbh_participants_col_idx = -1
+    prev_meetings_key_discussion_col_idx = -1
+    prev_meetings_action_items_col_idx = -1
+    prev_meetings_key_questions_col_idx = -1
+    prev_meetings_brand_traits_col_idx = -1
+    prev_meetings_customer_needs_col_idx = -1
+    prev_meetings_client_pain_points_col_idx = -1
+    # --- Add any other indices you need from this sheet ---
 
     # --- Process each specific, known file ---
     for item in all_files_in_folder: # Main loop starts here
@@ -540,11 +569,11 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
 
                 if not is_error_or_no_content and gemini_llm_model:
                      summary_of_pdf_content = summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, file_data_object[:20000])
-                     final_context_parts.append(f"## General NBH Pitch Overview (from '{file_name}'):\n{summary_of_pdf_content}\n")
+                     final_context_parts_for_llm.append(f"## General NBH Pitch Overview (from '{file_name}'):\n{summary_of_pdf_content}\n")
                 elif not is_error_or_no_content: # Has text, but no LLM
-                     final_context_parts.append(f"## General NBH Pitch Overview (from '{file_name}'):\n{file_data_object[:1000]}...\n(Full content available, LLM summarization skipped)\n")
+                     final_context_parts_for_llm.append(f"## General NBH Pitch Overview (from '{file_name}'):\n{file_data_object[:1000]}...\n(Full content available, LLM summarization skipped)\n")
                 else: # It's an error string or "no content" message
-                     final_context_parts.append(f"## General NBH Pitch Context (from '{file_name}'):\n{file_data_object}\n")
+                     final_context_parts_for_llm.append(f"## General NBH Pitch Context (from '{file_name}'):\n{file_data_object}\n")
             continue
 
         # 2. National Campaigns_case studies (Now as PDF)
@@ -559,7 +588,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     file_data_object.startswith("A general error occurred")
                 )
                 if is_error_or_no_content:
-                    final_context_parts.append(f"## Case Studies (from PDF: '{file_name}'):\n{file_data_object}\n") # Report error                
+                    final_context_parts_for_llm.append(f"## Case Studies (from PDF: '{file_name}'):\n{file_data_object}\n") # Report error                
                 else:
                     # Successfully got text from the PDF.
                     # The PDF text will likely be one large block.
@@ -583,9 +612,9 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                         f"{truncated_pdf_text}\n"
                         f"---\nEND PDF CASE STUDY TEXT\n---\n"
                     )
-                    final_context_parts.append(case_study_context)
+                    final_context_parts_for_llm.append(case_study_context)
             else: # Should not happen if get_structured_gdrive_file_data returns string or error
-                final_context_parts.append(f"## Case Studies (from PDF: '{file_name}'):\nNo text data extracted or unexpected format.\n")
+                final_context_parts_for_llm.append(f"## Case Studies (from PDF: '{file_name}'):\nNo text data extracted or unexpected format.\n")
             continue # Move to next file
 
         # 3. & 4. Physical & Digital Campaigns (GSheets - Extract relevant rows)
@@ -621,7 +650,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                         if "brand name" not in lower_header: missing_cols.append("'Brand Name'")
                         if "industry" not in lower_header: missing_cols.append("'Industry'")
                         print(f"    Warning: Required column(s) {', '.join(missing_cols)} not found in header of {file_name}. Skipping detailed campaign processing for this file.")
-                        final_context_parts.append(f"## Historical Campaign Data (from '{file_name}'):\nRequired columns missing in sheet header. Cannot process for relevant campaigns.\n")
+                        final_context_parts_for_llm.append(f"## Historical Campaign Data (from '{file_name}'):\nRequired columns missing in sheet header. Cannot process for relevant campaigns.\n")
                         continue # Skip to next file if essential columns are missing
 
                 for row_info in file_data_object:
@@ -673,14 +702,14 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                         rows_added_count +=1
                 
                 if rows_added_count > 0:
-                    final_context_parts.append("".join(relevant_rows_for_llm))
+                    final_context_parts_for_llm.append("".join(relevant_rows_for_llm))
                 else:
-                    final_context_parts.append(f"## Historical Campaign Data (from '{file_name}'):\nNo campaigns found directly matching '{current_target_brand_name}' or its inferred industry '{target_brand_industry}'.\n")
+                    final_context_parts_for_llm.append(f"## Historical Campaign Data (from '{file_name}'):\nNo campaigns found directly matching '{current_target_brand_name}' or its inferred industry '{target_brand_industry}'.\n")
 
             elif isinstance(file_data_object, str): 
-                final_context_parts.append(f"## Note on '{file_name}':\nError processing campaign data: {file_data_object}\n")
+                final_context_parts_for_llm.append(f"## Note on '{file_name}':\nError processing campaign data: {file_data_object}\n")
             else: 
-                 final_context_parts.append(f"## Historical Campaign Data (from '{file_name}'):\nNo data rows found or file not in expected sheet format.\n")
+                 final_context_parts_for_llm.append(f"## Historical Campaign Data (from '{file_name}'):\nNo data rows found or file not in expected sheet format.\n")
             continue
 
         # 5. com data _ Cross vertical Services_ West (GSheet - Database Numbers/Leads - MULTI-TAB)
@@ -735,7 +764,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
             else: # No data or unexpected format
                 com_data_structured_output.append(f"No data or tabs could be extracted from '{file_name}', or it was not in the expected sheet format.\n")
             
-            final_context_parts.append("".join(com_data_structured_output))
+            final_context_parts_for_llm.append("".join(com_data_structured_output))
             continue 
         
         # 6. NBH Previous Meetings Data
@@ -744,7 +773,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
             print(f"    Processing NBH Previous Meetings Sheet: {file_name}")
             previous_meeting_notes_list = [] # Use a list to build strings
 
-            if isinstance(file_data_object, list) and file_data_object:
+            if isinstance(file_data_object, list) and file_data_object:              
                 # --- Define expected header names for this sheet (adjust as per your sheet) ---
                 # It's crucial these match your sheet's column headers exactly (case-insensitive)
                 # Based on your sample output: 'Meeitng ID', 'Meeting Date', 'Brand Name', 'Meeting Title',
@@ -767,69 +796,67 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                 header_values = first_row_dict.get("header", [])
                 lower_header = [str(h).strip().lower() for h in header_values]
 
-                prev_brand_col_idx = -1
-                prev_date_col_idx = -1
                 # Add more column indices as needed based on what you want to extract
                 print(f"    DEBUG NBH_Previous_meetings - Parsed Headers (lower_header): {lower_header}") # <--- ADD THIS
 
                 try:
-                            print(f"Attempting to find: '{HEADER_PREV_BRAND_NAME}'")
-                            prev_brand_col_idx = lower_header.index(HEADER_PREV_BRAND_NAME)
-                            print(f"Found '{HEADER_PREV_BRAND_NAME}' at index {prev_brand_col_idx}")
+                            #print(f"Attempting to find: '{HEADER_PREV_BRAND_NAME}'")
+                            prev_meetings_brand_col_idx = lower_header.index(HEADER_PREV_BRAND_NAME)
+                            #print(f"Found '{HEADER_PREV_BRAND_NAME}' at index {prev_brand_col_idx}")
 
-                            print(f"Attempting to find: '{HEADER_PREV_MEETING_DATE}'")
-                            prev_date_col_idx = lower_header.index(HEADER_PREV_MEETING_DATE)
-                            print(f"Found '{HEADER_PREV_MEETING_DATE}' at index {prev_date_col_idx}")
+                            #print(f"Attempting to find: '{HEADER_PREV_MEETING_DATE}'")
+                            prev_meetings_date_col_idx = lower_header.index(HEADER_PREV_MEETING_DATE)
+                            #print(f"Found '{HEADER_PREV_MEETING_DATE}' at index {prev_date_col_idx}")
 
-                            print(f"Attempting to find: '{HEADER_PREV_CLIENT_PARTICIPANTS_NAMES}'")
-                            client_participants_names_col_idx = lower_header.index(HEADER_PREV_CLIENT_PARTICIPANTS_NAMES)
-                            print(f"Found '{HEADER_PREV_CLIENT_PARTICIPANTS_NAMES}' at index {client_participants_names_col_idx}")
+                            #print(f"Attempting to find: '{HEADER_PREV_CLIENT_PARTICIPANTS_NAMES}'")
+                            prev_meetings_client_participants_col_idx = lower_header.index(HEADER_PREV_CLIENT_PARTICIPANTS_NAMES)
+                            #print(f"Found '{HEADER_PREV_CLIENT_PARTICIPANTS_NAMES}' at index {client_participants_names_col_idx}")
 
-                            print(f"Attempting to find: '{HEADER_PREV_KEY_DISCUSSION}'")
-                            key_discussion_col_idx = lower_header.index(HEADER_PREV_KEY_DISCUSSION)
-                            print(f"Found '{HEADER_PREV_KEY_DISCUSSION}' at index {key_discussion_col_idx}")
+                            #print(f"Attempting to find: '{HEADER_PREV_KEY_DISCUSSION}'")
+                            prev_meetings_key_discussion_col_idx = lower_header.index(HEADER_PREV_KEY_DISCUSSION)
+                            #print(f"Found '{HEADER_PREV_KEY_DISCUSSION}' at index {key_discussion_col_idx}")
 
-                            print(f"Attempting to find: '{HEADER_PREV_ACTION_ITEMS}'")
-                            action_items_col_idx = lower_header.index(HEADER_PREV_ACTION_ITEMS)
-                            print(f"Found '{HEADER_PREV_ACTION_ITEMS}' at index {action_items_col_idx}")
+                            #print(f"Attempting to find: '{HEADER_PREV_ACTION_ITEMS}'")
+                            prev_meetings_action_items_col_idx = lower_header.index(HEADER_PREV_ACTION_ITEMS)
+                            #print(f"Found '{HEADER_PREV_ACTION_ITEMS}' at index {action_items_col_idx}")
 
-                            print(f"Attempting to find: '{HEADER_PREV_KEY_QUESTIONS}'")
-                            key_questions_col_idx = lower_header.index(HEADER_PREV_KEY_QUESTIONS)
-                            print(f"Found '{HEADER_PREV_KEY_QUESTIONS}' at index {key_questions_col_idx}")
+                            #print(f"Attempting to find: '{HEADER_PREV_KEY_QUESTIONS}'")
+                            prev_meetings_key_questions_col_idx = lower_header.index(HEADER_PREV_KEY_QUESTIONS)
+                            #print(f"Found '{HEADER_PREV_KEY_QUESTIONS}' at index {key_questions_col_idx}")
 
-                            print(f"Attempting to find: '{HEADER_PREV_BRAND_TRAITS}'")
-                            brand_traits_col_idx = lower_header.index(HEADER_PREV_BRAND_TRAITS)
-                            print(f"Found '{HEADER_PREV_BRAND_TRAITS}' at index {brand_traits_col_idx}")
+                            #print(f"Attempting to find: '{HEADER_PREV_BRAND_TRAITS}'")
+                            prev_meetings_brand_traits_col_idx = lower_header.index(HEADER_PREV_BRAND_TRAITS)
+                            #print(f"Found '{HEADER_PREV_BRAND_TRAITS}' at index {brand_traits_col_idx}")
 
-                            print(f"Attempting to find: '{HEADER_PREV_CUSTOMER_NEEDS}'")
-                            customer_needs_col_idx = lower_header.index(HEADER_PREV_CUSTOMER_NEEDS)
-                            print(f"Found '{HEADER_PREV_CUSTOMER_NEEDS}' at index {customer_needs_col_idx}")
+                            #print(f"Attempting to find: '{HEADER_PREV_CUSTOMER_NEEDS}'")
+                            prev_meetings_customer_needs_col_idx = lower_header.index(HEADER_PREV_CUSTOMER_NEEDS)
+                            #print(f"Found '{HEADER_PREV_CUSTOMER_NEEDS}' at index {customer_needs_col_idx}")
 
-                            print(f"Attempting to find: '{HEADER_PREV_CLIENT_PAIN_POINTS}'")
-                            client_pain_points_col_idx = lower_header.index(HEADER_PREV_CLIENT_PAIN_POINTS)
-                            print(f"Found '{HEADER_PREV_CLIENT_PAIN_POINTS}' at index {client_pain_points_col_idx}")
+                            #print(f"Attempting to find: '{HEADER_PREV_CLIENT_PAIN_POINTS}'")
+                            prev_meetings_client_pain_points_col_idx = lower_header.index(HEADER_PREV_CLIENT_PAIN_POINTS)
+                            #print(f"Found '{HEADER_PREV_CLIENT_PAIN_POINTS}' at index {client_pain_points_col_idx}")
 
-                            print(f"Attempting to find: '{HEADER_PREV_NBH_PARTICIPANTS_NAMES}'")
-                            nbh_participants_names_col_idx = lower_header.index(HEADER_PREV_NBH_PARTICIPANTS_NAMES)
-                            print(f"Found '{HEADER_PREV_NBH_PARTICIPANTS_NAMES}' at index {nbh_participants_names_col_idx}")
+                            #print(f"Attempting to find: '{HEADER_PREV_NBH_PARTICIPANTS_NAMES}'")
+                            prev_meetings_nbh_participants_col_idx = lower_header.index(HEADER_PREV_NBH_PARTICIPANTS_NAMES)
+                            #print(f"Found '{HEADER_PREV_NBH_PARTICIPANTS_NAMES}' at index {nbh_participants_names_col_idx}")
 
                 except ValueError as e_val: # Catch the ValueError and print its specific message
                     print(f"    VALUE ERROR while finding column index: {e_val}") # This will tell you *which string* was not found
                     print(f"    Warning: Essential columns for previous meeting analysis not found in '{file_name}'. Skipping.")
                     # ... your existing error handling in except block ...
                     previous_meeting_notes_list.append(f"Could not process previous meetings sheet due to missing essential columns (e.g., Brand Name, Meeting Date, Key Discussion Points).\n")
-                    final_context_parts.append("".join(previous_meeting_notes_list))
+                    final_context_parts_for_llm.append("".join(previous_meeting_notes_list))
                     # Re-initialize all indices to -1 within the except block if one fails, so subsequent code doesn't use stale (but valid looking) indices from a previous file
-                    prev_brand_col_idx = -1
-                    prev_date_col_idx = -1
-                    client_participants_names_col_idx = -1
-                    key_discussion_col_idx = -1
-                    action_items_col_idx = -1
-                    key_questions_col_idx = -1
-                    brand_traits_col_idx = -1
-                    customer_needs_col_idx = -1
-                    client_pain_points_col_idx = -1
-                    nbh_participants_names_col_idx = -1
+                    prev_meetings_brand_col_idx = -1
+                    prev_meetings_date_col_idx = -1
+                    prev_meetings_client_participants_col_idx = -1
+                    prev_meetings_nbh_participants_col_idx = -1
+                    prev_meetings_key_discussion_col_idx = -1
+                    prev_meetings_action_items_col_idx = -1
+                    prev_meetings_key_questions_col_idx = -1
+                    prev_meetings_brand_traits_col_idx = -1
+                    prev_meetings_customer_needs_col_idx = -1
+                    prev_meetings_client_pain_points_col_idx = -1
                     continue # Skip further processing for this file
 
                 matching_previous_meetings_details = []
@@ -840,13 +867,12 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     if row_info.get("values") == header_values:  # Skip header row
                         continue
                     
-                    row_values = row_info['values']
-                    prev_meeting_brand_name_from_sheet = "" # Initialize for current row
+                    row_values = row_info['values']# Initialize for current row
                     
                     # Extract brand name from the previous meeting row
-                    prev_meeting_brand_name = ""
-                    if len(row_values) > prev_brand_col_idx and row_values[prev_brand_col_idx] is not None:
-                        prev_meeting_brand_name_from_sheet = str(row_values[prev_brand_col_idx]).strip()
+                    prev_meeting_brand_name_from_sheet = ""
+                    if len(row_values) > prev_meetings_brand_col_idx and row_values[prev_meetings_brand_col_idx] is not None:
+                        prev_meeting_brand_name_from_sheet = str(row_values[prev_meetings_brand_col_idx]).strip()
 
                     # --- START OF TARGETED DEBUG BLOCK ---
                     # Only print if the sheet brand name (lowercase) potentially contains the target brand name (lowercase)
@@ -884,7 +910,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                         meeting_details_dict = {"original_row_info": row_info} # Store original for later full extraction
                         try:
                             # Extract date for sorting (handle potential date parsing errors)
-                            date_str = str(row_values[prev_date_col_idx]) if len(row_values) > prev_date_col_idx else None
+                            date_str = str(row_values[prev_meetings_date_col_idx]) if len(row_values) > prev_meetings_date_col_idx else None
                             if date_str:
                                 # Attempt to parse common date formats, be robust
                                 for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%y"): # Add more if needed
@@ -901,148 +927,168 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                             meeting_details_dict["date_obj"] = datetime.date.min # Fallback
 
                         # Textual data
-                        def get_cell_value(col_idx, default="N/A"):
+                        def get_cell_val_from_row(col_idx, default="N/A"):
                             if col_idx != -1 and len(row_values) > col_idx and row_values[col_idx] is not None and str(row_values[col_idx]).strip():
                                 return str(row_values[col_idx]).strip()
                             return default
 
-                        # Basic extraction for now, LLM can do more
-                        meeting_details_dict["discussion"] = str(row_values[key_discussion_col_idx]) if len(row_values) > key_discussion_col_idx else "N/A"
-                        meeting_details_dict["actions"] = str(row_values[action_items_col_idx]) if len(row_values) > action_items_col_idx else "N/A"
-                        # New data points
-                        meeting_details_dict["key_questions"] = str(row_values[key_questions_col_idx]) if len(row_values) > key_questions_col_idx and row_values[key_questions_col_idx] else "N/A"
-                        meeting_details_dict["brand_traits"] = str(row_values[brand_traits_col_idx]) if len(row_values) > brand_traits_col_idx and row_values[brand_traits_col_idx] else "N/A"
-                        meeting_details_dict["customer_needs"] = str(row_values[customer_needs_col_idx]) if len(row_values) > customer_needs_col_idx and row_values[customer_needs_col_idx] else "N/A"
-                        meeting_details_dict["client_pain_points"] = str(row_values[client_pain_points_col_idx]) if len(row_values) > client_pain_points_col_idx and row_values[client_pain_points_col_idx] else "N/A"                
+                        meeting_details_dict["discussion"] = get_cell_val_from_row(prev_meetings_key_discussion_col_idx)
+                        meeting_details_dict["actions"] = get_cell_val_from_row(prev_meetings_action_items_col_idx)
+                        meeting_details_dict["key_questions"] = get_cell_val_from_row(prev_meetings_key_questions_col_idx)
+                        meeting_details_dict["brand_traits"] = get_cell_val_from_row(prev_meetings_brand_traits_col_idx)
+                        meeting_details_dict["customer_needs"] = get_cell_val_from_row(prev_meetings_customer_needs_col_idx)
+                        meeting_details_dict["client_pain_points"] = get_cell_val_from_row(prev_meetings_client_pain_points_col_idx)              
 
                         # Follow-up Check by Name
                         meeting_details_dict["is_direct_follow_up_candidate"] = False
-                        prev_client_names_str = get_cell_value(client_participants_names_col_idx, "")
-                        prev_nbh_names_str = get_cell_value(nbh_participants_names_col_idx, "")
+                        if prev_meetings_client_participants_col_idx != -1 and prev_meetings_nbh_participants_col_idx != -1:
+                            prev_client_names_str = get_cell_val_from_row(prev_meetings_client_participants_col_idx, "")
+                            prev_nbh_names_str = get_cell_val_from_row(prev_meetings_nbh_participants_col_idx, "")
 
-                        prev_client_attendee_names = parse_names_from_cell_helper(prev_client_names_str)
-                        prev_nbh_attendee_names_from_sheet = parse_names_from_cell_helper(prev_nbh_names_str)
-                        prev_nbh_attendee_names_for_followup_check = {name for name in prev_nbh_attendee_names_from_sheet if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP and name != AGENT_EMAIL.lower().split('@')[0]}
-
-
-                        print(f"    DEBUG FOLLOW-UP CHECK FOR PREVIOUS MEETING (Brand: {prev_meeting_brand_name_from_sheet}):")
-                        print(f"        Current Meeting Title: {current_meeting_data.get('title')}") # Assuming current_meeting_data is available
-                        print(f"        Previous Meeting (Sheet) Key Discussion: {get_cell_value(key_discussion_col_idx, 'N/A')}") # Or some other identifier for the prev meeting
-
-                        print(f"        CURRENT Brand Attendees (for intersection): {current_brand_attendee_names}")
-                        print(f"        PREVIOUS Brand Attendees (from sheet, for intersection): {prev_client_attendee_names}")
-    
-                        print(f"        CURRENT NBH Attendees (for intersection, filtered): {current_nbh_attendee_names_for_followup_check}")
-                        print(f"        PREVIOUS NBH Attendees (from sheet, filtered, for intersection): {prev_nbh_attendee_names_for_followup_check}") # Use the corrected var name here
-                        
-                        common_brand_attendees_names = current_brand_attendee_names.intersection(prev_client_attendee_names)
-                        common_nbh_attendees_names = current_nbh_attendee_names_for_followup_check.intersection(prev_nbh_attendee_names_for_followup_check)
-
-                        if common_brand_attendees_names and common_nbh_attendees_names:
-                            meeting_details_dict["is_direct_follow_up_candidate"] = True
-                            print(f"        DECISION: MARKED as direct_follow_up_candidate = True")
-                        else:
-                            # meeting_details_dict["is_direct_follow_up_candidate"] is already False by default
-                            print(f"        DECISION: direct_follow_up_candidate = False")
-                        matching_previous_meetings_details.append(meeting_details_dict)
-
-                # --- Format the collected previous meeting data for the LLM ---
-                previous_meeting_notes_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}' (from '{file_name}'):\n")
-                if matching_previous_meetings_details:
-                    matching_previous_meetings_details.sort(key=lambda x: x["date_obj"], reverse=True)
-                    MAX_PREVIOUS_MEETINGS_TO_NOTE = 3
-                    
-                    is_overall_direct_follow_up = any(mtg.get("is_direct_follow_up_candidate", False) for mtg in matching_previous_meetings_details[:MAX_PREVIOUS_MEETINGS_TO_NOTE])
-
-                    if is_overall_direct_follow_up:
-                        previous_meeting_notes_list.append(
-                            f"**This upcoming meeting appears to be a DIRECT FOLLOW-UP based on attendee overlap with past meeting(s).** "
-                            f"The brief should heavily focus on continuity, previous discussions, and action items.\n\n"
-                        )
-                        # For direct follow-ups, include all details
-                        for mtg_data in matching_previous_meetings_details[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
-                            date_display = mtg_data["date_obj"].strftime("%Y-%m-%d") # ...
-                            original_row_index_val = mtg_data.get("original_row_info", {}).get("row_index", "N/A")
-                            note_parts = [f"### Previous Meeting on {date_display} (Row: {original_row_index_val})"]
-                            if mtg_data.get("is_direct_follow_up_candidate"): note_parts.append(" *(Potential Direct Follow-up)*\n") # This is redundant if overall is true, but fine
-                            else: note_parts.append("\n")
-
-                            if mtg_data['discussion'] != "N/A": note_parts.append(f"- **Key Discussion Points:** {mtg_data['discussion']}\n")
-                            if mtg_data['key_questions'] != "N/A": note_parts.append(f"- **Key Questions Raised by Client:** {mtg_data['key_questions']}\n")
-                            if mtg_data['brand_traits'] != "N/A": note_parts.append(f"- **Observed Brand Traits:** {mtg_data['brand_traits']}\n")
-                            if mtg_data['customer_needs'] != "N/A": note_parts.append(f"- **Identified Customer Needs:** {mtg_data['customer_needs']}\n")
-                            if mtg_data['client_pain_points'] != "N/A": note_parts.append(f"- **Client Pain Points Discussed:** {mtg_data['client_pain_points']}\n")
+                            prev_client_attendee_names = parse_names_from_cell_helper(prev_client_names_str)
+                            prev_nbh_attendee_names_from_sheet_raw = parse_names_from_cell_helper(prev_nbh_names_str)
                             
-                            # Always include action items if it's an overall direct follow-up context
-                            if mtg_data['actions'] != "N/A":
-                                note_parts.append(f"- **Action Items (Relevant for Follow-up):** {mtg_data['actions']}\n")
+                            prev_nbh_attendee_names_for_followup_check_sheet = {
+                                name for name in prev_nbh_attendee_names_from_sheet_raw 
+                                if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP and name != AGENT_EMAIL.lower().split('@')[0]
+                            }
                             
-                            note_parts.append("---\n")
-                            previous_meeting_notes_list.append("".join(note_parts))
-                    else: # NOT an overall direct follow-up
-                        previous_meeting_notes_list.append(
-                            f"NBH has had previous interactions with '{current_target_brand_name}'. "
-                            f"These were separate discussions. Relevant high-level context from past interactions is noted below. " # Clarify
-                            f"This is NOT a direct continuation of specific action items from these past meetings unless otherwise indicated by the meeting title or current attendees.\n\n"
-                        )
-                        # For NON direct follow-ups, include only very high-level info, or less detail
-                        for mtg_data in matching_previous_meetings_details[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
-                            date_display = mtg_data["date_obj"].strftime("%Y-%m-%d")
-                            original_row_index_val = mtg_data.get("original_row_info", {}).get("row_index", "N/A")
-                            note_parts = [f"### Previous Interaction on {date_display} (Row: {original_row_index_val})\n"]
-                            
-                            # ONLY include very general context, AVOID specific action items unless truly generic
-                            if mtg_data['discussion'] != "N/A":
-                                note_parts.append(f"- **General Topic/Discussion:** {mtg_data['discussion'][:250]}...\n") # Truncate
-                            if mtg_data['brand_traits'] != "N/A": # Brand traits might be generically useful
-                                note_parts.append(f"- **Observed Brand Traits (General):** {mtg_data['brand_traits']}\n")
-                            # Explicitly DO NOT include 'Action Items' or 'Key Questions' if it's not a direct follow-up
-                            # unless you have a specific reason.
-                            note_parts.append(f"- Note: This was a separate past engagement. Details are for general brand context.\n")
-                            note_parts.append("---\n")
-                            previous_meeting_notes_list.append("".join(note_parts))
-                else: # No matching_previous_meetings_details
-                    previous_meeting_notes_list.append(f"No previous meeting records found specifically for '{current_target_brand_name}'.\n")
-                
-                final_context_parts.append("".join(previous_meeting_notes_list))
+                            common_brand_attendees = current_brand_attendee_names.intersection(prev_client_attendee_names)
+                            common_nbh_attendees = current_nbh_attendee_names_for_followup_check.intersection(prev_nbh_attendee_names_for_followup_check_sheet)
+
+                            if common_brand_attendees and common_nbh_attendees:
+                                meeting_details_dict["is_direct_follow_up_candidate"] = True
+                        matching_previous_meetings_details_accumulator.append(meeting_details_dict)
 
             elif isinstance(file_data_object, str): # Error reading sheet
-                final_context_parts.append(f"## Previous NBH Meetings (from '{file_name}'):\nError processing the sheet: {file_data_object}\n")
+                final_context_parts_for_llm.append(f"## Previous NBH Meetings (from '{file_name}'):\nError processing the sheet: {file_data_object}\n")
             else: # No data
-                final_context_parts.append(f"## Previous NBH Meetings (from '{file_name}'):\nNo data rows found in the sheet.\n")
-            continue        
+                final_context_parts_for_llm.append(f"## Previous NBH Meetings (from '{file_name}'):\nNo data rows found in the sheet.\n")
+            # This 'continue' ensures we don't fall through to generic file handling for this specific file type
+            continue 
 
         # Fallback for other files or unrecognized structures
         elif isinstance(file_data_object, str) and file_data_object.strip():
             # Could be a simple text file, or an error message we haven't specifically handled
             # You might want to summarize these too if they are documents
             if "File type" in file_data_object or "Error" in file_data_object or "Could not parse" in file_data_object:
-                 final_context_parts.append(f"## Note on file '{file_name}':\n{file_data_object}\n")
+                 final_context_parts_for_llm.append(f"## Note on file '{file_name}':\n{file_data_object}\n")
             elif gemini_llm_model: # It's some text content
                  summary = summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, file_data_object[:15000])
-                 final_context_parts.append(f"## Information from '{file_name}':\n{summary}\n")
+                 final_context_parts_for_llm.append(f"## Information from '{file_name}':\n{summary}\n")
             else: # No LLM, just pass truncated raw text
-                 final_context_parts.append(f"## Information from '{file_name}':\n{file_data_object[:500]}...\n")# --- Other files (not specifically handled) ---
+                 final_context_parts_for_llm.append(f"## Information from '{file_name}':\n{file_data_object[:500]}...\n")# --- Other files (not specifically handled) ---
 
-    # --- Combine all collected parts ---
-    # ... (rest of the function to combine final_context_parts and truncate if necessary) ...
-    if not final_context_parts:
-        return "No specifically relevant internal NBH data could be extracted for this brand.\n"
+
+    # --- Process Accumulated Previous Meeting Data (after all files are checked) ---
+    is_overall_direct_follow_up = False
+    condensed_past_meetings_for_alert = []
+    previous_meeting_notes_for_llm_list = [] # Specific list for LLM summary of past meetings
+
+    if matching_previous_meetings_details_accumulator:
+        matching_previous_meetings_details_accumulator.sort(key=lambda x: x.get("date_obj", datetime.date.min), reverse=True)
+        MAX_PREVIOUS_MEETINGS_TO_NOTE = 3
+        
+        is_overall_direct_follow_up = any(
+            mtg.get("is_direct_follow_up_candidate", False) 
+            for mtg in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]
+        )
+
+        # Build `condensed_past_meetings_for_alert` if not a direct follow-up
+        if not is_overall_direct_follow_up:
+            for mtg_data_alert in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
+                date_display_alert = mtg_data_alert.get("date_obj", datetime.date.min).strftime("%Y-%m-%d") if mtg_data_alert.get("date_obj", datetime.date.min) != datetime.date.min else "Date N/A"
+                discussion_summary_alert = mtg_data_alert.get('discussion', 'N/A')
+                if len(discussion_summary_alert) > 150: discussion_summary_alert = discussion_summary_alert[:147] + "..."
+                
+                prev_nbh_participants_list_alert = []
+                # Use prev_meetings_nbh_participants_col_idx (which was set when the sheet was processed)
+                if prev_meetings_nbh_participants_col_idx != -1 and \
+                   'original_row_info' in mtg_data_alert and \
+                   'values' in mtg_data_alert['original_row_info'] and \
+                   len(mtg_data_alert['original_row_info']['values']) > prev_meetings_nbh_participants_col_idx:
+                    
+                    raw_nbh_str_alert = mtg_data_alert['original_row_info']['values'][prev_meetings_nbh_participants_col_idx]
+                    parsed_nbh_names_alert = parse_names_from_cell_helper(str(raw_nbh_str_alert))
+                    human_nbh_names_alert = {
+                        name for name in parsed_nbh_names_alert 
+                        if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP and name != AGENT_EMAIL.lower().split('@')[0]
+                    }
+                    prev_nbh_participants_list_alert = list(human_nbh_names_alert)
+
+                condensed_past_meetings_for_alert.append({
+                    "date": date_display_alert,
+                    "discussion_summary": discussion_summary_alert,
+                    "nbh_team": ", ".join(prev_nbh_participants_list_alert) if prev_nbh_participants_list_alert else "N/A"
+                })
+        
+        # Build `previous_meeting_notes_for_llm_list` based on `is_overall_direct_follow_up`
+        # This is where you use your Option 1 logic from before (detailed vs. condensed for LLM)
+        source_file_name_prev_meetings = matching_previous_meetings_details_accumulator[0].get('source_file_name', 'Previous Meetings Sheet') if matching_previous_meetings_details_accumulator else 'Previous Meetings Sheet'
+        previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}' (from '{source_file_name_prev_meetings}'):\n")
+
+        if is_overall_direct_follow_up:
+            previous_meeting_notes_for_llm_list.append(
+                f"**This upcoming meeting appears to be a DIRECT FOLLOW-UP based on attendee overlap with past meeting(s).** "
+                f"The brief should heavily focus on continuity, previous discussions, and action items.\n\n"
+            )
+            for mtg_data_llm in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
+                # ... (Your DETAILED formatting logic for LLM for direct follow-up)
+                # Accessing mtg_data_llm['discussion'], mtg_data_llm['actions'] etc.
+                date_llm = mtg_data_llm.get("date_obj", datetime.date.min).strftime("%Y-%m-%d") # ...
+                row_idx_llm = mtg_data_llm.get("original_row_info", {}).get("row_index", "N/A")
+                note_parts_llm = [f"### Previous Meeting on {date_llm} (Row: {row_idx_llm})\n"]
+                if mtg_data_llm.get('discussion') != "N/A": note_parts_llm.append(f"- Key Discussion: {mtg_data_llm['discussion']}\n")
+                if mtg_data_llm.get('actions') != "N/A": note_parts_llm.append(f"- Action Items: {mtg_data_llm['actions']}\n")
+                # Add other fields as needed
+                note_parts_llm.append("---\n")
+                previous_meeting_notes_for_llm_list.append("".join(note_parts_llm))
+        else: # Not an overall direct follow-up
+            previous_meeting_notes_for_llm_list.append(
+                f"NBH has had previous interactions with '{current_target_brand_name}'. "
+                f"These were separate discussions. Relevant high-level context from past interactions is noted below. "
+                f"This is NOT a direct continuation of specific action items from these past meetings unless otherwise indicated by the meeting title or current attendees.\n\n"
+            )
+            for mtg_data_llm in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
+                # ... (Your CONDENSED formatting logic for LLM for non-direct follow-up)
+                date_llm = mtg_data_llm.get("date_obj", datetime.date.min).strftime("%Y-%m-%d") # ...
+                row_idx_llm = mtg_data_llm.get("original_row_info", {}).get("row_index", "N/A")
+                note_parts_llm = [f"### Previous Interaction on {date_llm} (Row: {row_idx_llm})\n"]
+                if mtg_data_llm.get('discussion') != "N/A": note_parts_llm.append(f"- General Topic: {mtg_data_llm['discussion'][:200]}...\n") # Example
+                if mtg_data_llm.get('brand_traits') != "N/A": note_parts_llm.append(f"- Observed Brand Traits: {mtg_data_llm['brand_traits']}\n")
+                note_parts_llm.append("---\n")
+                previous_meeting_notes_for_llm_list.append("".join(note_parts_llm))
+    else: # No previous meeting details found for this brand in any sheet
+        previous_meeting_notes_for_llm_list.append(f"## Previous NBH Meetings:\nNo previous meeting records found specifically for '{current_target_brand_name}'.\n")
+
+    final_context_parts_for_llm.append("".join(previous_meeting_notes_for_llm_list))
     
-    final_output_str = "\n\n".join(final_context_parts)
-    
-    MAX_TOTAL_WORDS_FOR_LLM_CONTEXT = 45000 
-    current_word_count = len(final_output_str.split())
-    if current_word_count > MAX_TOTAL_WORDS_FOR_LLM_CONTEXT:
-        print(f"WARN: Combined internal data section is very long ({current_word_count} words). Truncating overall.")
-        char_limit = MAX_TOTAL_WORDS_FOR_LLM_CONTEXT * 5 
-        if len(final_output_str) > char_limit:
-            cut_off_point = final_output_str.rfind(' ', 0, char_limit)
-            if cut_off_point == -1: cut_off_point = char_limit
-            final_output_str = final_output_str[:cut_off_point] + "\n... [Overall internal data truncated due to length]"
 
-    return f"--- Targeted Internal NBH Data & Summaries for {current_target_brand_name} ---\n\n{final_output_str}\n--- End of Targeted Internal NBH Data & Summaries ---\n"
 
+
+
+    # --- Finalize LLM Summary String ---
+    if not final_context_parts_for_llm:
+        llm_summary_output_str = "No specifically relevant internal NBH data could be extracted for this brand.\n"
+    else:
+        llm_summary_output_str = "\n\n".join(final_context_parts_for_llm)
+        # Your truncation logic for llm_summary_output_str
+        MAX_TOTAL_WORDS_FOR_LLM_CONTEXT = 45000 
+        current_word_count = len(llm_summary_output_str.split())
+        if current_word_count > MAX_TOTAL_WORDS_FOR_LLM_CONTEXT:
+            # Simple character-based truncation if needed
+            char_limit = int(MAX_TOTAL_WORDS_FOR_LLM_CONTEXT * 5.5) # Approximate
+            if len(llm_summary_output_str) > char_limit:
+                 llm_summary_output_str = llm_summary_output_str[:char_limit] + "\n... [Overall internal data truncated]"
+
+    final_llm_summary_for_return = f"--- Targeted Internal NBH Data & Summaries for {current_target_brand_name} ---\n\n{llm_summary_output_str}\n--- End of Targeted Internal NBH Data & Summaries ---\n"
+
+    return {
+        "llm_summary_string": final_llm_summary_for_return,
+        "is_overall_direct_follow_up": is_overall_direct_follow_up,
+        "has_previous_interactions": bool(matching_previous_meetings_details_accumulator),
+        "condensed_past_meetings_for_alert": condensed_past_meetings_for_alert 
+    }
 
 # --- Calendar Processing ---
 def get_upcoming_meetings(calendar_service, calendar_id='primary', time_delta_hours=96): # Process meetings in next 3 days
@@ -1240,7 +1286,7 @@ def extract_meeting_info(event, agent_email_global, nbh_service_accounts_to_excl
         "online meeting", # Specific
         "meeting", "call", "sync", "discussion", "proposal", "review", "update", "connect",
         "team", "session", "chat", "catch up", "briefing", "brief", "agenda",
-        "commercial", "intro", "partnership with" # Added partnership with
+        "commercial", "intro", "partnership with", "campaign" # Added partnership with
     ]
     common_conjunctions_separators = ["with", "and", "&", "for", "on", ":", "-", "/", "|"] # "x", "<>" handled separately
 
@@ -1873,24 +1919,130 @@ def main():
         meeting_data = meeting_data_result
         current_brand_name_for_meeting = meeting_data['brand_name']
 
-        internal_nbh_data_for_brand = "Internal NBH Data: Not fetched or processed."
-
+        # Initialize before the if block
+        internal_nbh_data_for_brand_str = "Internal NBH Data: Not fetched or processed due to service issues."
+        internal_data_result = { # Default structure if services fail
+            "llm_summary_string": internal_nbh_data_for_brand_str,
+            "is_overall_direct_follow_up": False,
+            "has_previous_interactions": False,
+            "condensed_past_meetings_for_alert": []
+        }
+       
 
         if drive_service and sheets_service: # LLM model is now passed to get_internal_nbh_data_for_brand
-            internal_nbh_data_for_brand_str = get_internal_nbh_data_for_brand(
+            internal_data_result = get_internal_nbh_data_for_brand(
                 drive_service, 
                 sheets_service, 
                 gemini_llm_model, 
                 current_brand_name_for_meeting,
-                current_meeting_data=meeting_data # PASS THE FULL DICT
+                current_meeting_data=meeting_data,
+                EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP=EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, # Pass global
+                AGENT_EMAIL=AGENT_EMAIL # Pass global
+                # Note: Column indices like nbh_participants_names_col_idx are determined *inside* get_internal_nbh_data_for_brand
             )
+            internal_nbh_data_for_brand_str = internal_data_result["llm_summary_string"] # For the LLM
+
+
+            # --- >>> LEADERSHIP ALERT LOGIC <<< ---
+            if internal_data_result.get("has_previous_interactions", False) and \
+               not internal_data_result.get("is_overall_direct_follow_up", False):
+                
+                alert_subject = f"FYI: New Separate Meeting Scheduled with Existing Brand - {current_brand_name_for_meeting}"
+
+                # --- PRE-FETCH VALUES FROM current_meeting_data ---
+                meeting_title_for_alert = meeting_data.get('title', 'N/A')
+                meeting_time_str_for_alert = meeting_data.get('start_time_str', 'N/A')
+
+
+                # Prepare attendee strings for the alert email
+                nbh_attendees_list_for_alert = meeting_data.get('nbh_attendees', [])
+                brand_attendees_list_for_alert = meeting_data.get('brand_attendees_info', [])
+
+                nbh_attendees_str_alert = ', '.join(
+                    sorted(list(set(att.get('name', att.get('email', 'Unknown NBH Attendee')) for att in nbh_attendees_list_for_alert)))
+                ) if nbh_attendees_list_for_alert else "N/A"
+                
+                brand_attendees_str_alert = ', '.join(
+                    sorted(list(set(att.get('name', att.get('email', 'Unknown Brand Attendee')) for att in brand_attendees_list_for_alert)))
+                ) if brand_attendees_list_for_alert else "N/A"
+
+                alert_body_html = f"""
+                <html><head><style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+                    ul {{ margin-top: 5px; }}
+                    li {{ margin-bottom: 5px; }}
+                    p {{ margin-bottom: 10px; }}
+                </style></head><body>
+                <p>Hello Leadership Team,</p>
+                <p>This is an automated notification from the NBH Meeting Prep Agent.</p>
+                <p>A new meeting has been scheduled with <b>{current_brand_name_for_meeting}</b>, a brand NBH has interacted with previously.
+                However, this upcoming meeting does NOT appear to be a direct follow-up to recent specific discussions based on attendee overlap with those prior engagements.</p>
+                
+                <p><b>Upcoming Meeting Details:</b></p>
+                <ul>
+                    <li><b>Title:</b> {meeting_data.get('title', 'N/A')}</li>
+                    <li><b>Date & Time:</b> {meeting_data.get('start_time_str', 'N/A')}</li>
+                    <li><b>NBH Attendees:</b> {nbh_attendees_str_alert}</li>
+                    <li><b>Brand Attendees:</b> {brand_attendees_str_alert}</li>
+                </ul>
+                
+                <p><b>Context:</b> While NBH has past interactions with {current_brand_name_for_meeting}, this particular upcoming engagement may involve different primary NBH or client participants, or represent a distinct initiative. 
+                This could indicate a new opportunity, a different team from the brand reaching out, or a new NBH team engaging.</p>
+                
+                <p>You might want to ensure internal alignment and share any relevant historical context across NBH teams engaging with this brand.</p>
+                """
+                
+                condensed_past_meetings = internal_data_result.get("condensed_past_meetings_for_alert", [])
+                if condensed_past_meetings:
+                    alert_body_html += "<p><b>Summary of Most Recent (Separate) Previous Interactions:</b></p><ul>"
+                    for past_mtg_summary in condensed_past_meetings:
+                        alert_body_html += (
+                            f"<li><b>{past_mtg_summary.get('date', 'N/A')}:</b> {past_mtg_summary.get('discussion_summary', 'N/A')} "
+                            f"(NBH Team Involved: {past_mtg_summary.get('nbh_team', 'N/A')})</li>"
+                        )
+                    alert_body_html += "</ul>"
+                else:
+                    # This case should ideally not happen if has_previous_interactions is True,
+                    # but good to have a fallback message.
+                    alert_body_html += "<p>Note: Past interactions with this brand exist, but specific summaries for this alert were not generated or available in this run.</p>"
+
+                alert_body_html += """
+                <p>No action is strictly required from this email; it is for your awareness and potential coordination.</p>
+                <p>Best regards,<br>NBH Meeting Prep Agent</p>
+                </body></html>
+                """
+                
+                #leadership_emails = ["sristi.agarwal@nobroker.in", "rohit.c@nobroker.in"] # Add the second email
+                
+                if gmail_service:
+                    email_message_body_for_leadership = create_email_message(
+                        sender=AGENT_EMAIL, 
+                        to_emails_list=leadership_emails,
+                        subject=alert_subject,
+                        message_text_html=alert_body_html
+                    )
+                    send_gmail_message(gmail_service, 'me', email_message_body_for_leadership)
+                    print(f"    Leadership alert sent for separate meeting with {current_brand_name_for_meeting}")
+                else:
+                    print(f"    WARNING: Leadership alert for {current_brand_name_for_meeting} NOT sent (Gmail service unavailable).")
+            # --- END OF LEADERSHIP ALERT LOGIC ---
+        
+        # This else corresponds to "if drive_service and sheets_service:"
+        else: 
+            print(f"  Drive/Sheets service not available. Skipping internal data fetch and leadership alert for '{current_brand_name_for_meeting}'.")
+            # internal_nbh_data_for_brand_str is already set to a default message.
+            # internal_data_result default structure will ensure subsequent checks don't fail.
+
+
+
+
 
         if not gemini_llm_model:
             print(f"  Skipping brief generation for '{meeting_data['title']}': Gemini LLM not available.")
             # Don't mark as processed yet, maybe LLM will be available next run
             continue
         
-        if not meeting_data['nbh_attendees']: # Check if any NBH humans are there
+        if not meeting_data.get('nbh_attendees'): # Check if any NBH humans are there
             print(f"  Event '{meeting_data['title']}': No NBH attendees (other than brandvmeet) to send brief to.")
             save_processed_event_id(event_id)
             tag_event_as_processed(calendar_service, event_id)
@@ -1900,7 +2052,7 @@ def main():
         print(f"  Proceeding with brief generation for: {meeting_data['brand_name']}")
         generated_brief = generate_brief_with_gemini(gemini_llm_model, meeting_data, internal_nbh_data_for_brand_str)
 
-        if "Error:" in generated_brief: # Check for errors from LLM
+        if "Error:" in generated_brief or not generated_brief.strip(): # Check for errors from LLM
             print(f"  Failed to generate brief for '{meeting_data['title']}': {generated_brief}")
             error_body_html = f"""
             <html><body><p>The pre-meeting brief agent encountered an error while generating the brief for:</p>
@@ -1921,7 +2073,7 @@ def main():
             save_processed_event_id(event_id)
         
 
-    print(f"Script finished at {datetime.datetime.now()}")
+    #print(f"Script finished at {datetime.datetime.now()}")
 
 if __name__ == '__main__':
     main()
