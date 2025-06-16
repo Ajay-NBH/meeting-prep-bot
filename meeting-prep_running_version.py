@@ -1029,17 +1029,9 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                                 # Strongest indication: overlap on both sides
                                 is_follow_up = True
                                 print(f"        Follow-up Reason: Brand AND NBH attendee overlap.")
-                            elif not current_brand_attendee_names and common_nbh_attendees: 
-                                # If we couldn't get any current brand attendee names (e.g., all were just emails and parsing failed)
-                                # but there IS NBH attendee overlap, consider it a follow-up cautiously.
-                                # This assumes the current brand attendees list from calendar might be weak.
+                            elif common_nbh_attendees: 
                                 is_follow_up = True
-                                print(f"        Follow-up Reason: NBH attendee overlap (current brand attendee names were sparse/unavailable for matching).")
-                            elif common_nbh_attendees and not prev_client_attendee_names:
-                                # If previous meeting had no brand attendees listed (or parsing failed),
-                                # but current NBH team overlaps with previous NBH team, could be internal follow-up context.
-                                is_follow_up = True
-                                print(f"        Follow-up Reason: NBH attendee overlap (previous meeting had no specific brand attendees listed for matching).")
+                                print(f"        Follow-up Reason: NBH attendee overlap detected.") # More general message
 
 
                             if is_follow_up:
