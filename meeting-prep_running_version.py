@@ -939,24 +939,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                         meeting_details_dict["customer_needs"] = get_cell_val_from_row(prev_meetings_customer_needs_col_idx)
                         meeting_details_dict["client_pain_points"] = get_cell_val_from_row(prev_meetings_client_pain_points_col_idx)              
 
-                        # ---- ADD DEBUG PRINTS FOR NAME SETS ----
-                        print(f"    DEBUG (get_internal_nbh_data / PrevMtgCheck) - Current Target Brand: {current_target_brand_name}")
-                        print(f"    DEBUG (get_internal_nbh_data / PrevMtgCheck) - Prev Mtg Brand (Sheet): {prev_meeting_brand_name_from_sheet}")
-                        # Identify the previous meeting being checked, e.g., by its date or a key discussion point
-                        prev_mtg_date_debug = meeting_details_dict.get("date_obj", "Unknown Date").strftime("%Y-%m-%d")
-                        print(f"    DEBUG (get_internal_nbh_data / PrevMtgCheck) - Checking against Prev Mtg Date (Sheet): {prev_mtg_date_debug}")
-
-                        print(f"        Prev Client Names String (Sheet): '{prev_client_names_str}'")
-                        print(f"        Parsed Prev Client Names (Sheet): {prev_client_attendee_names}")
-                        print(f"        Current Brand Names (Calendar): {current_brand_attendee_names}")
-                        
-                        print(f"        Prev NBH Names String (Sheet): '{prev_nbh_names_str}'")
-                        print(f"        Parsed Prev NBH Names Raw (Sheet): {prev_nbh_attendee_names_from_sheet_raw}")
-                        print(f"        Parsed Prev NBH Names Filtered (Sheet): {prev_nbh_attendee_names_for_followup_check_sheet}")
-                        print(f"        Current NBH Names Filtered (Calendar): {current_nbh_attendee_names_for_followup_check}")
-                        # ---- END OF ADDED DEBUG PRINTS ----
-
-                        
                         # Follow-up Check by Name
                         meeting_details_dict["is_direct_follow_up_candidate"] = False
                         if prev_meetings_client_participants_col_idx != -1 and prev_meetings_nbh_participants_col_idx != -1:
@@ -970,6 +952,26 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                                 name for name in prev_nbh_attendee_names_from_sheet_raw 
                                 if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP and name != AGENT_EMAIL.lower().split('@')[0]
                             }
+
+
+                            # ---- ADD DEBUG PRINTS FOR NAME SETS ----
+                            print(f"    DEBUG (get_internal_nbh_data / PrevMtgCheck) - Current Target Brand: {current_target_brand_name}")
+                            print(f"    DEBUG (get_internal_nbh_data / PrevMtgCheck) - Prev Mtg Brand (Sheet): {prev_meeting_brand_name_from_sheet}")
+                            # Identify the previous meeting being checked, e.g., by its date or a key discussion point
+                            prev_mtg_date_debug = meeting_details_dict.get("date_obj", "Unknown Date").strftime("%Y-%m-%d")
+                            print(f"    DEBUG (get_internal_nbh_data / PrevMtgCheck) - Checking against Prev Mtg Date (Sheet): {prev_mtg_date_debug}")
+    
+                            print(f"        Prev Client Names String (Sheet): '{prev_client_names_str}'")
+                            print(f"        Parsed Prev Client Names (Sheet): {prev_client_attendee_names}")
+                            print(f"        Current Brand Names (Calendar): {current_brand_attendee_names}")
+                            
+                            print(f"        Prev NBH Names String (Sheet): '{prev_nbh_names_str}'")
+                            print(f"        Parsed Prev NBH Names Raw (Sheet): {prev_nbh_attendee_names_from_sheet_raw}")
+                            print(f"        Parsed Prev NBH Names Filtered (Sheet): {prev_nbh_attendee_names_for_followup_check_sheet}")
+                            print(f"        Current NBH Names Filtered (Calendar): {current_nbh_attendee_names_for_followup_check}")
+                            # ---- END OF ADDED DEBUG PRINTS ----
+    
+                            
                             
                             common_brand_attendees = current_brand_attendee_names.intersection(prev_client_attendee_names)
                             common_nbh_attendees = current_nbh_attendee_names_for_followup_check.intersection(prev_nbh_attendee_names_for_followup_check_sheet)
