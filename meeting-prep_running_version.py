@@ -493,22 +493,64 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
     def get_clean_names_from_attendee_list(attendee_list_param):
         names = set()
         for att in attendee_list_param:
-            name_to_process = att.get('displayName', att.get('email', '').split('@')[0])
-            cleaned_name = name_to_process.lower().strip()
-            for single_name in re.split(r'[,;/&]|\band\b|\bwith\b', cleaned_name):
-                final_name = single_name.strip()
-                if final_name and len(final_name) > 1:
-                    names.add(final_name)
-        return names
+            name_to_process = att_dict.get('name', '') # Get the pre-extracted name
+            if not name_to_process and 'email' in att_dict: # Fallback to email prefix if 'name' is empty
+                name_to_process = att_dict['email'].split('@')[0]
+            if not name_to_process: # Skip if still no name
+                continue
+            
+             # Your existing cleaning logic from parse_names_from_cell_helper can be used here
+             # Remove content in parentheses, asterisks, split by delimiters, etc.
+            cleaned_name_to_process = re.sub(r'\s*\([^)]*\)', '', str(name_to_process))
+            cleaned_name_to_process = cleaned_name_to_process.replace('*', '').strip().lower()
+    
+             # Split by common delimiters (if needed, but usually display names are clean)
+             # For simplicity, let's assume display names are mostly single entities for now
+             # If they can contain commas etc., you'd re-apply parts of parse_names_from_cell_helper's split logic
+            
+            if cleaned_name_to_process and len(cleaned_name_to_process) > 2: # Basic filter
+                # Further filtering like in parse_names_from_cell_helper
+                if "nbh sales" not in cleaned_name_to_process and \
+                    "brand representative" not in cleaned_name_to_process and \
+                    "nobrokerhood" not in cleaned_name_to_process:
+                    names.add(cleaned_name_to_process)
+         return names
 
-    # Use current_meeting_data here
-    current_nbh_attendees_list = current_meeting_data.get('nbh_attendees', [])
-    current_brand_attendees_list = current_meeting_data.get('brand_attendees_info', [])
+    current_nbh_attendees_list = current_meeting_data.get('nbh_attendees', []) # List of {'name': 'Display Name', 'email': '...'}
+    current_brand_attendees_list = current_meeting_data.get('brand_attendees_info', []) # List of {'name': 'Display Name / Email', 'email': '...'}
 
-    current_nbh_attendee_names = get_clean_names_from_attendee_list(current_nbh_attendees_list)
-    current_brand_attendee_names = get_clean_names_from_attendee_list(current_brand_attendees_list)
+    # For NBH attendees, prioritize the 'name' field (which should be displayName)
+    nbh_names_to_parse = []
+    for att in current_nbh_attendees_list:
+        # Prefer 'name' (displayName), fallback to email prefix
+        name_candidate = att.get('name', '')
+        if not name_candidate or "@" in name_candidate: # If name is empty or looks like an email
+            email_prefix = att.get('email', '').split('@')[0]
+            if email_prefix:
+                name_candidate = email_prefix.replace(".", " ") # Convert sreetoma.lodh to sreetoma lodh
+        if name_candidate: # Only add if we have something
+            nbh_names_to_parse.append(name_candidate)
+    
+    # For Brand attendees, it's trickier as displayName might be just the email
+    brand_names_to_parse = []
+    for att in current_brand_attendees_list:
+        name_candidate = att.get('name', '') # This is often the email itself for externals
+        # If it looks like an email, try to get the part before @
+        if "@" in name_candidate and name_candidate == att.get('email',''): # If name is identical to email
+            email_prefix = name_candidate.split('@')[0]
+            name_candidate = email_prefix.replace(".", " ").replace("_", " ") # spandeyh, akssuren
+        elif not name_candidate and 'email' in att: # Fallback if name is empty
+             name_candidate = att.get('email', '').split('@')[0].replace(".", " ").replace("_", " ")
 
+        if name_candidate:
+            brand_names_to_parse.append(name_candidate)
 
+    # Now use parse_names_from_cell_helper with these strings
+    # We pass a single string of names joined by a common delimiter like a comma,
+    # as parse_names_from_cell_helper expects a string.
+    current_nbh_attendee_names = parse_names_from_cell_helper(", ".join(nbh_names_to_parse))
+    current_brand_attendee_names = parse_names_from_cell_helper(", ".join(brand_names_to_parse))
+                                        
     current_nbh_attendee_names_for_followup_check = {
     name for name in current_nbh_attendee_names if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP
     }
@@ -978,10 +1020,38 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
 
                             print(f"        Common Brand Attendees: {common_brand_attendees}")
                             print(f"        Common NBH Attendees: {common_nbh_attendees}")
-                            
+
+                            # MODIFIED Condition:
+                            is_follow_up = False
                             if common_brand_attendees and common_nbh_attendees:
+                                # Strongest indication: overlap on both sides
+                                is_follow_up = True
+                                print(f"        Follow-up Reason: Brand AND NBH attendee overlap.")
+                            elif not current_brand_attendee_names and common_nbh_attendees: 
+                                # If we couldn't get any current brand attendee names (e.g., all were just emails and parsing failed)
+                                # but there IS NBH attendee overlap, consider it a follow-up cautiously.
+                                # This assumes the current brand attendees list from calendar might be weak.
+                                is_follow_up = True
+                                print(f"        Follow-up Reason: NBH attendee overlap (current brand attendee names were sparse/unavailable for matching).")
+                            elif common_nbh_attendees and not prev_client_attendee_names:
+                                # If previous meeting had no brand attendees listed (or parsing failed),
+                                # but current NBH team overlaps with previous NBH team, could be internal follow-up context.
+                                is_follow_up = True
+                                print(f"        Follow-up Reason: NBH attendee overlap (previous meeting had no specific brand attendees listed for matching).")
+
+
+                            if is_follow_up:
                                 meeting_details_dict["is_direct_follow_up_candidate"] = True
+                            
+                            print(f"        DECISION for this prev mtg: is_direct_follow_up_candidate = {meeting_details_dict['is_direct_follow_up_candidate']}")
+
+
+                            
+                            
+                            #if common_brand_attendees and common_nbh_attendees:
+                             #   meeting_details_dict["is_direct_follow_up_candidate"] = True
                         matching_previous_meetings_details_accumulator.append(meeting_details_dict)
+                 
 
             elif isinstance(file_data_object, str): # Error reading sheet
                 final_context_parts_for_llm.append(f"## Previous NBH Meetings (from '{file_name}'):\nError processing the sheet: {file_data_object}\n")
