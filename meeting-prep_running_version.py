@@ -993,7 +993,12 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
             mtg.get("is_direct_follow_up_candidate", False) 
             for mtg in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]
         )
-
+        
+        # Add a debug print RIGHT HERE:
+        print(f"DEBUG (get_internal_nbh_data): is_overall_direct_follow_up calculated as: {is_overall_direct_follow_up}")
+        for i, mtg_debug in enumerate(matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]):
+            print(f"  DEBUG (get_internal_nbh_data): Prev Mtg {i+1} - is_direct_follow_up_candidate: {mtg_debug.get('is_direct_follow_up_candidate', False)}")
+            
         # Build `condensed_past_meetings_for_alert` if not a direct follow-up
         if not is_overall_direct_follow_up:
             for mtg_data_alert in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
@@ -1083,6 +1088,9 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
 
     final_llm_summary_for_return = f"--- Targeted Internal NBH Data & Summaries for {current_target_brand_name} ---\n\n{llm_summary_output_str}\n--- End of Targeted Internal NBH Data & Summaries ---\n"
 
+    # Just before returning:
+    print(f"DEBUG (get_internal_nbh_data): FINAL is_overall_direct_follow_up before return: {is_overall_direct_follow_up}")
+                                        
     return {
         "llm_summary_string": final_llm_summary_for_return,
         "is_overall_direct_follow_up": is_overall_direct_follow_up,
