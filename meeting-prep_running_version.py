@@ -1940,13 +1940,18 @@ def main():
                 AGENT_EMAIL=AGENT_EMAIL # Pass global
                 # Note: Column indices like nbh_participants_names_col_idx are determined *inside* get_internal_nbh_data_for_brand
             )
+            print(f"DEBUG: internal_data_result received in main: {internal_data_result}") # Print the whole dict
             internal_nbh_data_for_brand_str = internal_data_result["llm_summary_string"] # For the LLM
+            # Specifically check the values used in the if condition:
+            has_prev_interactions_in_main = internal_data_result.get("has_previous_interactions", False)
+            is_overall_follow_up_in_main = internal_data_result.get("is_overall_direct_follow_up", False)
+            print(f"DEBUG: In main - has_previous_interactions: {has_prev_interactions_in_main}")
+            print(f"DEBUG: In main - is_overall_direct_follow_up: {is_overall_follow_up_in_main}")
 
 
             # --- >>> LEADERSHIP ALERT LOGIC <<< ---
-            if internal_data_result.get("has_previous_interactions", False) and \
-               not internal_data_result.get("is_overall_direct_follow_up", False):
-                
+            if has_prev_interactions_in_main and not is_overall_follow_up_in_main:
+                print("DEBUG: Leadership alert condition MET in main.")
                 alert_subject = f"FYI: New Separate Meeting Scheduled with Existing Brand - {current_brand_name_for_meeting}"
 
                 # --- PRE-FETCH VALUES FROM current_meeting_data ---
