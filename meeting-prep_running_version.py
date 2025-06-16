@@ -490,31 +490,31 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
     print(f"  Target Brand: '{current_target_brand_name}', Inferred Industry: '{target_brand_industry}'")
 
     # Get clean names from current meeting data
-    def get_clean_names_from_attendee_list(attendee_list_param):
-        names = set()
-        for att in attendee_list_param:
-            name_to_process = att_dict.get('name', '') # Get the pre-extracted name
-            if not name_to_process and 'email' in att_dict: # Fallback to email prefix if 'name' is empty
-                name_to_process = att_dict['email'].split('@')[0]
-            if not name_to_process: # Skip if still no name
-                continue
+    #def get_clean_names_from_attendee_list(attendee_list_param):
+    #    names = set()
+    #    for att in attendee_list_param:
+    #        name_to_process = att_dict.get('name', '') # Get the pre-extracted name
+    #        if not name_to_process and 'email' in att_dict: # Fallback to email prefix if 'name' is empty
+    #            name_to_process = att_dict['email'].split('@')[0]
+    #        if not name_to_process: # Skip if still no name
+    #            continue
             
              # Your existing cleaning logic from parse_names_from_cell_helper can be used here
              # Remove content in parentheses, asterisks, split by delimiters, etc.
-            cleaned_name_to_process = re.sub(r'\s*\([^)]*\)', '', str(name_to_process))
-            cleaned_name_to_process = cleaned_name_to_process.replace('*', '').strip().lower()
+    #        cleaned_name_to_process = re.sub(r'\s*\([^)]*\)', '', str(name_to_process))
+    #        cleaned_name_to_process = cleaned_name_to_process.replace('*', '').strip().lower()
     
              # Split by common delimiters (if needed, but usually display names are clean)
              # For simplicity, let's assume display names are mostly single entities for now
              # If they can contain commas etc., you'd re-apply parts of parse_names_from_cell_helper's split logic
             
-            if cleaned_name_to_process and len(cleaned_name_to_process) > 2: # Basic filter
-                # Further filtering like in parse_names_from_cell_helper
-                if "nbh sales" not in cleaned_name_to_process and \
-                    "brand representative" not in cleaned_name_to_process and \
-                    "nobrokerhood" not in cleaned_name_to_process:
-                    names.add(cleaned_name_to_process)
-         return names
+    #        if cleaned_name_to_process and len(cleaned_name_to_process) > 2: # Basic filter
+    #           # Further filtering like in parse_names_from_cell_helper
+    #            if "nbh sales" not in cleaned_name_to_process and \
+    #                "brand representative" not in cleaned_name_to_process and \
+    #                "nobrokerhood" not in cleaned_name_to_process:
+    #                names.add(cleaned_name_to_process)
+    #     return names
 
     current_nbh_attendees_list = current_meeting_data.get('nbh_attendees', []) # List of {'name': 'Display Name', 'email': '...'}
     current_brand_attendees_list = current_meeting_data.get('brand_attendees_info', []) # List of {'name': 'Display Name / Email', 'email': '...'}
