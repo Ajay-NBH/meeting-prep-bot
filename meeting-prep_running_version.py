@@ -529,6 +529,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
             if email_prefix:
                 name_candidate = email_prefix.replace(".", " ") # Convert sreetoma.lodh to sreetoma lodh
         if name_candidate: # Only add if we have something
+            name_candidate = name_candidate.replace(".", " ") 
             nbh_names_to_parse.append(name_candidate)
     
     # For Brand attendees, it's trickier as displayName might be just the email
@@ -543,6 +544,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
              name_candidate = att.get('email', '').split('@')[0].replace(".", " ").replace("_", " ")
 
         if name_candidate:
+            name_candidate = name_candidate.replace(".", " ") 
             brand_names_to_parse.append(name_candidate)
 
     # Now use parse_names_from_cell_helper with these strings
