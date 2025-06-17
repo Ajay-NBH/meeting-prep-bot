@@ -92,6 +92,73 @@ def parse_names_from_cell_helper(cell_value_str):
             names.add(final_name)
     return names
 
+# --- ADD THESE NEW HELPER FUNCTIONS NEAR THE TOP OF YOUR SCRIPT ---
+
+def normalize_attendee_name(name_str):
+    """
+    Takes a raw name string and converts it into a standardized set of name parts.
+    - "Shubham Chandrakant Dakhane" -> {'shubham', 'chandrakant', 'dakhane'}
+    - "shubham.chandrakant" -> {'shubham', 'chandrakant'}
+    - "trisha.bagchi7" -> {'trisha', 'bagchi'}
+    - "mary" -> {'mary'}
+    """
+    if not isinstance(name_str, str) or not name_str.strip():
+        return set()
+    
+    # Lowercase and replace common delimiters with spaces
+    processed_name = name_str.lower().replace('.', ' ').replace('_', ' ')
+    
+    # Remove all characters that are not letters or spaces
+    processed_name = re.sub(r'[^a-z\s]', '', processed_name)
+    
+    # Split into parts and filter out any empty strings resulting from multiple spaces
+    name_parts = {part for part in processed_name.split() if part}
+    
+    return name_parts
+
+def find_common_attendees(attendee_set_1_raw, attendee_set_2_raw):
+    """
+    Compares two sets of raw name strings and finds common individuals
+    using a flexible, normalization-based approach.
+    Returns a list of the matched raw names from the first set.
+    """
+    # Normalize all names in both sets
+    # Each item in these lists will be a set of name parts, e.g., [{'shubham', 'chandrakant'}, {'trisha', 'bagchi'}]
+    normalized_attendees_1 = [normalize_attendee_name(name) for name in attendee_set_1_raw]
+    normalized_attendees_2 = [normalize_attendee_name(name) for name in attendee_set_2_raw]
+
+    common_attendees_raw_names = []
+    
+    # Keep track of which attendees from set 2 have already been matched to avoid double counting
+    matched_indices_in_set_2 = set()
+
+    for i, norm_set_1 in enumerate(normalized_attendees_1):
+        if not norm_set_1:  # Skip empty normalized names
+            continue
+        
+        for j, norm_set_2 in enumerate(normalized_attendees_2):
+            if j in matched_indices_in_set_2:
+                continue # This person from set 2 is already matched
+            if not norm_set_2:
+                continue
+
+            # THE CORE LOGIC: Check for equality or if one is a subset of the other.
+            # This handles cases like {'shubham', 'chandrakant'} being a subset of {'shubham', 'chandrakant', 'dakhane'}
+            if norm_set_1.issubset(norm_set_2) or norm_set_2.issubset(norm_set_1):
+                # We have a match!
+                # Add the original raw name from the first set to our list of common attendees
+                common_attendees_raw_names.append(list(attendee_set_1_raw)[i])
+                matched_indices_in_set_2.add(j)
+                break # Move to the next person in set 1
+
+    return common_attendees_raw_names
+
+# --- END OF NEW HELPER FUNCTIONS ---
+
+
+
+
+
 # --- Google Authentication and Service Building ---
 def get_google_service(service_name, version, scopes_list, token_filename_base_for_local_storage): # Changed last param name for clarity
     creds = None
@@ -1017,25 +1084,54 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
     
                             
                             
-                            common_brand_attendees = current_brand_attendee_names.intersection(prev_client_attendee_names)
-                            common_nbh_attendees = current_nbh_attendee_names_for_followup_check.intersection(prev_nbh_attendee_names_for_followup_check_sheet)
+                           # common_brand_attendees = current_brand_attendee_names.intersection(prev_client_attendee_names)
+                           
+                           # common_nbh_attendees = current_nbh_attendee_names_for_followup_check.intersection(prev_nbh_attendee_names_for_followup_check_sheet)
 
-                            print(f"        Common Brand Attendees: {common_brand_attendees}")
-                            print(f"        Common NBH Attendees: {common_nbh_attendees}")
+                           # print(f"        Common Brand Attendees: {common_brand_attendees}")
+                           # print(f"        Common NBH Attendees: {common_nbh_attendees}")
 
                             # MODIFIED Condition:
+                           # is_follow_up = False
+                           # if common_brand_attendees and common_nbh_attendees:
+                           #     # Strongest indication: overlap on both sides
+                           #     is_follow_up = True
+                           #     print(f"        Follow-up Reason: Brand AND NBH attendee overlap.")
+                           # elif common_nbh_attendees: 
+                           #     is_follow_up = True
+                           #     print(f"        Follow-up Reason: NBH attendee overlap detected.") # More general message
+
+
+                           # if is_follow_up:
+                           #     meeting_details_dict["is_direct_follow_up_candidate"] = True
+
+# ---- [NEW AND IMPROVED CODE BLOCK] ----
+                            # Use the new flexible matching function
+                            common_brand_attendees = find_common_attendees(
+                                current_brand_attendee_names, 
+                                prev_client_attendee_names
+                            )
+                            common_nbh_attendees = find_common_attendees(
+                                current_nbh_attendee_names_for_followup_check,
+                                prev_nbh_attendee_names_for_followup_check_sheet
+                            )
+
+                            print(f"        Common Brand Attendees (Flexible Match): {common_brand_attendees}")
+                            print(f"        Common NBH Attendees (Flexible Match): {common_nbh_attendees}")
+
+                            # Condition for a follow-up: There must be an overlap of NBH team members.
+                            # Brand attendee overlap is a good signal but NBH overlap is essential for our definition.
                             is_follow_up = False
-                            if common_brand_attendees and common_nbh_attendees:
-                                # Strongest indication: overlap on both sides
+                            if common_nbh_attendees:
                                 is_follow_up = True
-                                print(f"        Follow-up Reason: Brand AND NBH attendee overlap.")
-                            elif common_nbh_attendees: 
-                                is_follow_up = True
-                                print(f"        Follow-up Reason: NBH attendee overlap detected.") # More general message
-
-
+                                print(f"        Follow-up Reason: NBH attendee overlap detected (found {len(common_nbh_attendees)} common members).")
+                                if common_brand_attendees:
+                                    print(f"        Follow-up Corroboration: Brand attendee overlap also detected.")
+                                
                             if is_follow_up:
                                 meeting_details_dict["is_direct_follow_up_candidate"] = True
+                            # ---- [END OF NEW CODE BLOCK] ----
+
                             
                             print(f"        DECISION for this prev mtg: is_direct_follow_up_candidate = {meeting_details_dict['is_direct_follow_up_candidate']}")
 
