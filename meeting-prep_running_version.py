@@ -585,7 +585,7 @@ def summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, f
 
 # --- Modify get_internal_nbh_data_for_brand ---
 def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_model, 
-                                    current_target_brand_name, current_meeting_data,EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL):
+                                    current_target_brand_name,target_brand_industry,current_meeting_data,EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL):
     # ... (initial checks for services and folder ID remain) ...
     print(f"Fetching and processing internal NBH data for target brand '{current_target_brand_name}'...")
     all_files_in_folder = list_files_in_gdrive_folder(drive_service, NBH_GDRIVE_FOLDER_ID) # Ensure this is called
@@ -598,15 +598,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
             "has_previous_interactions": False,
             "condensed_past_meetings_for_alert": []
         }
-
-    target_brand_industry = "Unknown"
-    if gemini_llm_model: # Only infer if LLM is available
-        print(f"  Inferring industry for current target brand: '{current_target_brand_name}' using LLM...")
-        target_brand_industry = get_brand_industry(current_target_brand_name, gemini_llm_model) # Singular call
-        # Optional: You could implement a small, separate cache here for target_brand_industry
-        # if you expect to run briefs for the same new target brand multiple times.
-    else:
-        print(f"  LLM not available. Industry for '{current_target_brand_name}' will be 'Unknown'.")
     
     print(f"  Target Brand: '{current_target_brand_name}', Inferred Industry: '{target_brand_industry}'")
 
