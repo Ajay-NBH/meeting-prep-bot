@@ -2015,120 +2015,124 @@ def main():
         
         print(f"  LLM identified Brand: '{current_brand_name_for_meeting}', Industry: '{target_brand_industry}'")
 
+        # --- THIS IS THE CORRECTED AND SIMPLIFIED BLOCK ---
         
-        # Initialize before the if block
-        internal_nbh_data_for_brand_str = "Internal NBH Data: Not fetched or processed due to service issues."
-        internal_data_result = { # Default structure if services fail
-            "llm_summary_string": internal_nbh_data_for_brand_str,
-            "is_overall_direct_follow_up": False,
-            "has_previous_interactions": False,
-            "condensed_past_meetings_for_alert": []
-        }
-       
-
-        if drive_service and sheets_service: # LLM model is now passed to get_internal_nbh_data_for_brand
+        # Step 1: Check if necessary services are available.
+        if drive_service and sheets_service:
+            # If services are available, call the function to get the real data.
             internal_data_result = get_internal_nbh_data_for_brand(
-                drive_service, 
-                sheets_service, 
-                gemini_llm_model, 
-                current_brand_name_for_meeting,
+                drive_service=drive_service,
+                sheets_service=sheets_service,
+                gemini_llm_model=gemini_llm_model,
+                current_target_brand_name=current_brand_name_for_meeting,
+                target_brand_industry=target_brand_industry,  # <-- Pass the extracted industry
                 current_meeting_data=meeting_data,
-                EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP=EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, # Pass global
-                AGENT_EMAIL=AGENT_EMAIL # Pass global
-                # Note: Column indices like nbh_participants_names_col_idx are determined *inside* get_internal_nbh_data_for_brand
+                EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP=EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP,
+                AGENT_EMAIL=AGENT_EMAIL
             )
-            print(f"DEBUG: internal_data_result received in main: {internal_data_result}") # Print the whole dict
-            internal_nbh_data_for_brand_str = internal_data_result["llm_summary_string"] # For the LLM
-            # Specifically check the values used in the if condition:
-            has_prev_interactions_in_main = internal_data_result.get("has_previous_interactions", False)
-            is_overall_follow_up_in_main = internal_data_result.get("is_overall_direct_follow_up", False)
-            print(f"DEBUG: In main - has_previous_interactions: {has_prev_interactions_in_main}")
-            print(f"DEBUG: In main - is_overall_direct_follow_up: {is_overall_follow_up_in_main}")
-
-
-            # --- >>> LEADERSHIP ALERT LOGIC <<< ---
-            if has_prev_interactions_in_main and not is_overall_follow_up_in_main:
-                print("DEBUG: Leadership alert condition MET in main.")
-                alert_subject = f"FYI: New Separate Meeting Scheduled with Existing Brand - {current_brand_name_for_meeting}"
-
-                # --- PRE-FETCH VALUES FROM current_meeting_data ---
-                meeting_title_for_alert = meeting_data.get('title', 'N/A')
-                meeting_time_str_for_alert = meeting_data.get('start_time_str', 'N/A')
-
-
-                # Prepare attendee strings for the alert email
-                nbh_attendees_list_for_alert = meeting_data.get('nbh_attendees', [])
-                brand_attendees_list_for_alert = meeting_data.get('brand_attendees_info', [])
-
-                nbh_attendees_str_alert = ', '.join(
-                    sorted(list(set(att.get('name', att.get('email', 'Unknown NBH Attendee')) for att in nbh_attendees_list_for_alert)))
-                ) if nbh_attendees_list_for_alert else "N/A"
-                
-                brand_attendees_str_alert = ', '.join(
-                    sorted(list(set(att.get('name', att.get('email', 'Unknown Brand Attendee')) for att in brand_attendees_list_for_alert)))
-                ) if brand_attendees_list_for_alert else "N/A"
-
-                alert_body_html = f"""
-                <html><head><style>
-                    body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                    ul {{ margin-top: 5px; }}
-                    li {{ margin-bottom: 5px; }}
-                    p {{ margin-bottom: 10px; }}
-                </style></head><body>
-                <p>Hello Leadership Team,</p>
-                <p>This is an automated notification from the NBH Meeting Prep Agent.</p>
-                <p>A new meeting has been scheduled with <b>{current_brand_name_for_meeting}</b>, a brand NBH has interacted with previously.
-                However, this upcoming meeting does NOT appear to be a direct follow-up to recent specific discussions based on attendee overlap with those prior engagements.</p>
-                
-                <p><b>Upcoming Meeting Details:</b></p>
-                <ul>
-                    <li><b>Title:</b> {meeting_data.get('title', 'N/A')}</li>
-                    <li><b>Date & Time:</b> {meeting_data.get('start_time_str', 'N/A')}</li>
-                    <li><b>NBH Attendees:</b> {nbh_attendees_str_alert}</li>
-                    <li><b>Brand Attendees:</b> {brand_attendees_str_alert}</li>
-                </ul>
-                
-                <p><b>Context:</b> While NBH has past interactions with {current_brand_name_for_meeting}, this particular upcoming engagement may involve different primary NBH or client participants, or represent a distinct initiative. 
-                This could indicate a new opportunity, a different team from the brand reaching out, or a new NBH team engaging.</p>
-                
-                <p>You might want to ensure internal alignment and share any relevant historical context across NBH teams engaging with this brand.</p>
-                """
-                
-                condensed_past_meetings = internal_data_result.get("condensed_past_meetings_for_alert", [])
-                if condensed_past_meetings:
-                    alert_body_html += "<p><b>Summary of Most Recent (Separate) Previous Interactions:</b></p><ul>"
-                    for past_mtg_summary in condensed_past_meetings:
-                        alert_body_html += (
-                            f"<li><b>{past_mtg_summary.get('date', 'N/A')}:</b> {past_mtg_summary.get('discussion_summary', 'N/A')} "
-                            f"(NBH Team Involved: {past_mtg_summary.get('nbh_team', 'N/A')})</li>"
-                        )
-                    alert_body_html += "</ul>"
-                else:
-                    # This case should ideally not happen if has_previous_interactions is True,
-                    # but good to have a fallback message.
-                    alert_body_html += "<p>Note: Past interactions with this brand exist, but specific summaries for this alert were not generated or available in this run.</p>"
-
-                alert_body_html += """
-                <p>No action is strictly required from this email; it is for your awareness and potential coordination.</p>
-                <p>Best regards,<br>NBH Meeting Prep Agent</p>
-                </body></html>
-                """
-                
-                #leadership_emails = ["sristi.agarwal@nobroker.in", "rohit.c@nobroker.in"] # Add the second email
-                
-                if gmail_service:
-                    email_message_body_for_leadership = create_email_message(
-                        sender=AGENT_EMAIL, 
-                        to_emails_list=leadership_emails,
-                        subject=alert_subject,
-                        message_text_html=alert_body_html
-                    )
-                    send_gmail_message(gmail_service, 'me', email_message_body_for_leadership)
-                    print(f"    Leadership alert sent for separate meeting with {current_brand_name_for_meeting}")
-                else:
-                    print(f"    WARNING: Leadership alert for {current_brand_name_for_meeting} NOT sent (Gmail service unavailable).")
-            # --- END OF LEADERSHIP ALERT LOGIC ---
+        else:
+            # If services are NOT available, create the default/fallback structure.
+            print(f"  Drive/Sheets service not available. Skipping internal data fetch for '{current_brand_name_for_meeting}'.")
+            internal_data_result = {
+                "llm_summary_string": "Internal NBH Data: Not fetched due to Drive/Sheets service issues.",
+                "is_overall_direct_follow_up": False,
+                "has_previous_interactions": False,
+                "condensed_past_meetings_for_alert": []
+            }
         
+        # Step 2: Extract the summary string for the LLM brief from the result (either real or default).
+        internal_nbh_data_for_brand_str = internal_data_result["llm_summary_string"]
+        
+        # Step 3: Now, use the result for the leadership alert logic.
+        has_prev_interactions_in_main = internal_data_result.get("has_previous_interactions", False)
+        is_overall_follow_up_in_main = internal_data_result.get("is_overall_direct_follow_up", False)
+        
+        
+        
+                
+        # --- >>> LEADERSHIP ALERT LOGIC <<< ---
+        if has_prev_interactions_in_main and not is_overall_follow_up_in_main:
+            print("DEBUG: Leadership alert condition MET in main.")
+            alert_subject = f"FYI: New Separate Meeting Scheduled with Existing Brand - {current_brand_name_for_meeting}"
+
+            # --- PRE-FETCH VALUES FROM current_meeting_data ---
+            meeting_title_for_alert = meeting_data.get('title', 'N/A')
+            meeting_time_str_for_alert = meeting_data.get('start_time_str', 'N/A')
+
+
+            # Prepare attendee strings for the alert email
+            nbh_attendees_list_for_alert = meeting_data.get('nbh_attendees', [])
+            brand_attendees_list_for_alert = meeting_data.get('brand_attendees_info', [])
+
+            nbh_attendees_str_alert = ', '.join(
+                sorted(list(set(att.get('name', att.get('email', 'Unknown NBH Attendee')) for att in nbh_attendees_list_for_alert)))
+            ) if nbh_attendees_list_for_alert else "N/A"
+            
+            brand_attendees_str_alert = ', '.join(
+                sorted(list(set(att.get('name', att.get('email', 'Unknown Brand Attendee')) for att in brand_attendees_list_for_alert)))
+            ) if brand_attendees_list_for_alert else "N/A"
+
+            alert_body_html = f"""
+            <html><head><style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+                ul {{ margin-top: 5px; }}
+                li {{ margin-bottom: 5px; }}
+                p {{ margin-bottom: 10px; }}
+            </style></head><body>
+            <p>Hello Leadership Team,</p>
+            <p>This is an automated notification from the NBH Meeting Prep Agent.</p>
+            <p>A new meeting has been scheduled with <b>{current_brand_name_for_meeting}</b>, a brand NBH has interacted with previously.
+            However, this upcoming meeting does NOT appear to be a direct follow-up to recent specific discussions based on attendee overlap with those prior engagements.</p>
+            
+            <p><b>Upcoming Meeting Details:</b></p>
+            <ul>
+                <li><b>Title:</b> {meeting_data.get('title', 'N/A')}</li>
+                <li><b>Date & Time:</b> {meeting_data.get('start_time_str', 'N/A')}</li>
+                <li><b>NBH Attendees:</b> {nbh_attendees_str_alert}</li>
+                <li><b>Brand Attendees:</b> {brand_attendees_str_alert}</li>
+            </ul>
+            
+            <p><b>Context:</b> While NBH has past interactions with {current_brand_name_for_meeting}, this particular upcoming engagement may involve different primary NBH or client participants, or represent a distinct initiative. 
+            This could indicate a new opportunity, a different team from the brand reaching out, or a new NBH team engaging.</p>
+            
+            <p>You might want to ensure internal alignment and share any relevant historical context across NBH teams engaging with this brand.</p>
+            """
+            
+            condensed_past_meetings = internal_data_result.get("condensed_past_meetings_for_alert", [])
+            if condensed_past_meetings:
+                alert_body_html += "<p><b>Summary of Most Recent (Separate) Previous Interactions:</b></p><ul>"
+                for past_mtg_summary in condensed_past_meetings:
+                    alert_body_html += (
+                        f"<li><b>{past_mtg_summary.get('date', 'N/A')}:</b> {past_mtg_summary.get('discussion_summary', 'N/A')} "
+                        f"(NBH Team Involved: {past_mtg_summary.get('nbh_team', 'N/A')})</li>"
+                    )
+                alert_body_html += "</ul>"
+            else:
+                # This case should ideally not happen if has_previous_interactions is True,
+                # but good to have a fallback message.
+                alert_body_html += "<p>Note: Past interactions with this brand exist, but specific summaries for this alert were not generated or available in this run.</p>"
+
+            alert_body_html += """
+            <p>No action is strictly required from this email; it is for your awareness and potential coordination.</p>
+            <p>Best regards,<br>NBH Meeting Prep Agent</p>
+            </body></html>
+            """
+            
+            #leadership_emails = ["sristi.agarwal@nobroker.in", "rohit.c@nobroker.in"] # Add the second email
+            
+            if gmail_service:
+                email_message_body_for_leadership = create_email_message(
+                    sender=AGENT_EMAIL, 
+                    to_emails_list=leadership_emails,
+                    subject=alert_subject,
+                    message_text_html=alert_body_html
+                )
+                send_gmail_message(gmail_service, 'me', email_message_body_for_leadership)
+                print(f"    Leadership alert sent for separate meeting with {current_brand_name_for_meeting}")
+            else:
+                print(f"    WARNING: Leadership alert for {current_brand_name_for_meeting} NOT sent (Gmail service unavailable).")
+        # --- END OF LEADERSHIP ALERT LOGIC ---
+    
         # This else corresponds to "if drive_service and sheets_service:"
         else: 
             print(f"  Drive/Sheets service not available. Skipping internal data fetch and leadership alert for '{current_brand_name_for_meeting}'.")
