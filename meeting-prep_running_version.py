@@ -171,34 +171,34 @@ Follow these rules precisely:
 Here are some examples:
 
 Title: "TCPL (Tetley) X NoBrokerHood/Partnership, 11am"
-{
+{{
   "brand_name": "Tetley",
   "industry": "Beverages"
-}
+}}
 
 Title: "NBH X GIVA Digital _ June Discussion, 12pm"
-{
+{{
   "brand_name": "Giva",
   "industry": "Jewellery"
-}
+}}
 
 Title: "Physical meeting - Posterscope X NBH, 3:15pm"
-{
+{{
   "brand_name": "Posterscope",
   "industry": "Media Agency"
-}
+}}
 
 Title: "Campaign Discussion | Aashirvaad Svasti x NBH, 5pm"
-{
+{{
   "brand_name": "Aashirvaad Svasti",
   "industry": "Dairy"
-}
+}}
 
 Title: "Internal Team Sync"
-{
+{{
   "brand_name": "Unknown",
   "industry": "Unknown"
-}
+}}
 ---
 
 Now, analyze the following title:
