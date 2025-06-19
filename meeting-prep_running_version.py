@@ -16,6 +16,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
+from dotenv import load_dotenv
 
 
 import google.generativeai as genai
@@ -24,6 +25,12 @@ import google.generativeai as genai
 from pptx import Presentation
 import openpyxl
 
+# Load the .env file
+env = os.getenv("ENV", "dev")
+env_file = f".env.{env}"
+
+if not os.getenv("GITHUB_ACTIONS"):
+    load_dotenv(env_file)
 
 # --- Configuration ---
 # For Google Workspace APIs (Calendar, Gmail, Drive)
@@ -41,7 +48,7 @@ TOKEN_FILE_PREFIX = 'token_brandvmeet' # Will generate token_brandvmeet_calendar
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Set this environment variable
 
 # Google Drive Folder ID containing NBH data
-NBH_GDRIVE_FOLDER_ID = os.getenv("NBH_GDRIVE_FOLDER_ID", "1rikXDq-ZyuZpUbN-ZLCsmcVJCswIlPDq") # Set env var or replace placeholder
+NBH_GDRIVE_FOLDER_ID = os.getenv("NBH_GDRIVE_FOLDER_ID") # Set env var or replace placeholder
 
 AGENT_EMAIL = "brand.vmeet@nobroker.in" # Email of the agent account
 ADMIN_EMAIL_FOR_NOTIFICATIONS = "ajay.saini@nobroker.in" # REPLACE with your actual email
@@ -1727,7 +1734,7 @@ d) Brand persona
 
 e) What the brand is doing these days and the areas where they are focusing more lately
 
-#Recent Marketing history: List all the recent marketing history of the brand be it be campaigns or activities. Analyse the recent marketing campaigns of the brand as if you are a McKinsey or a BCG consultant and give me the analysis on various points, like the cohorting they are focusing on, etc. Don’t make a big report. Keep the points precise  and concise as if you are presenting to a CXO. Keep each point to a max of 2 lines.
+#Recent Marketing history: List all the recent marketing history of the brand be it be campaigns or activities. Analyse the recent marketing campaigns of the brand as if you are a McKinsey or a BCG consultant and give me the analysis on various points, like the cohorting they are focusing on, etc. Don't make a big report. Keep the points precise  and concise as if you are presenting to a CXO. Keep each point to a max of 2 lines.
 
 #Personal History and Persona Analysis: The personal history and persona analysis should be done for all the attendees from the brand side.
 
