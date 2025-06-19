@@ -156,7 +156,89 @@ def find_common_attendees(attendee_set_1_raw, attendee_set_2_raw):
 # --- END OF NEW HELPER FUNCTIONS ---
 
 
+BRAND_EXTRACTION_PROMPT_TEMPLATE = """
+You are an expert administrative assistant responsible for parsing meeting titles to extract key business information.
+Your task is to analyze the provided meeting title and return a JSON object with two specific keys: "brand_name" and "industry".
 
+Follow these rules precisely:
+1.  **brand_name**: Identify the primary brand or company being met. If a title follows the pattern 'Parent Company (Brand)', the 'Brand' inside the parentheses is the primary `brand_name`. The parent company should be ignored for this task.
+2.  **industry**: Infer the most likely industry for the primary `brand_name`.
+3.  If the title is ambiguous or you cannot identify a clear brand, return "Unknown" for both fields.
+4.  Your response MUST be ONLY the JSON object, with no other text or markdown fences.
+
+---
+Here are some examples:
+
+Title: "TCPL (Tetley) X NoBrokerHood/Partnership, 11am"
+{
+  "brand_name": "Tetley",
+  "industry": "Beverages"
+}
+
+Title: "NBH X GIVA Digital _ June Discussion, 12pm"
+{
+  "brand_name": "Giva",
+  "industry": "Jewellery"
+}
+
+Title: "Physical meeting - Posterscope X NBH, 3:15pm"
+{
+  "brand_name": "Posterscope",
+  "industry": "Media Agency"
+}
+
+Title: "Campaign Discussion | Aashirvaad Svasti x NBH, 5pm"
+{
+  "brand_name": "Aashirvaad Svasti",
+  "industry": "Dairy"
+}
+
+Title: "Internal Team Sync"
+{
+  "brand_name": "Unknown",
+  "industry": "Unknown"
+}
+---
+
+Now, analyze the following title:
+
+Title: "{MEETING_TITLE}"
+"""
+
+def get_brand_details_from_title_with_llm(gemini_llm_model, meeting_title):
+    """
+    Uses a single LLM call to extract brand name and industry from a meeting title.
+    Returns a dictionary with the extracted info or defaults if parsing fails.
+    """
+    default_response = {
+        "brand_name": "Unknown Brand",
+        "industry": "Unknown"
+    }
+    if not gemini_llm_model:
+        print("  LLM model not available for brand extraction.")
+        return default_response
+
+    prompt = BRAND_EXTRACTION_PROMPT_TEMPLATE.format(MEETING_TITLE=meeting_title)
+    try:
+        response = gemini_llm_model.generate_content(prompt)
+        raw_text = response.candidates[0].content.parts[0].text
+
+        cleaned_json_str = re.sub(r'```json\s*|\s*```', '', raw_text).strip()
+        data = json.loads(cleaned_json_str)
+
+        # Validate the simplified response structure
+        if "brand_name" in data and "industry" in data:
+            if not data["brand_name"] or data["brand_name"].lower() == 'unknown':
+                print(f"  LLM identified title '{meeting_title}' as ambiguous.")
+                return default_response
+            return data
+        else:
+            print(f"  Error: LLM response for '{meeting_title}' was missing 'brand_name' or 'industry'.")
+            return default_response
+
+    except (json.JSONDecodeError, IndexError, AttributeError, Exception) as e:
+        print(f"  Error processing LLM response for title '{meeting_title}': {e}")
+        return default_response
 
 
 # --- Google Authentication and Service Building ---
@@ -471,35 +553,6 @@ def get_structured_gdrive_file_data(drive_service, sheets_service, file_id, file
     except Exception as e:
         return f"A general error occurred reading GDrive file {file_name} (ID: {file_id}): {e}" # Returns string
 
-def get_brand_industry(brand_name, gemini_llm_model):
-
-    """
-    Uses Gemini LLM to infer the industry for a given brand name.
-    Returns a string such as "FMCG", "Real Estate", "E-commerce", etc.
-    """
-    if not gemini_llm_model:
-        print("Gemini LLM model not available for industry inference.")
-        return "Unknown"
-
-    prompt = (
-        f"Given the brand name '{brand_name}', infer the most likely industry or sector it operates in. "
-        "Respond with only the industry name (e.g., 'FMCG', 'Real Estate', 'E-commerce', 'Automotive', 'Education', etc.). "
-        "If you are unsure, respond with 'Unknown Industry'."
-    )
-    try:
-        response = gemini_llm_model.generate_content(prompt)
-        if response and response.candidates and response.candidates[0].content.parts:
-            industry = response.candidates[0].content.parts[0].text.strip()
-            # Clean up response
-            if not industry or "unknown" in industry.lower():
-                return "Unknown"
-            # Optionally, take only the first word/phrase if LLM returns a sentence
-            return industry.split('\n')[0].split('.')[0].strip()
-        else:
-            return "Unknown"
-    except Exception as e:
-        print(f"Error inferring industry for '{brand_name}': {e}")
-        return "Unknown"
 
 def summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, file_content):
     """
@@ -1391,7 +1444,11 @@ NBH_SERVICE_ACCOUNTS_TO_EXCLUDE = { # Emails to exclude from the displayed NBH a
 }
 
 
-def extract_meeting_info(event, agent_email_global, nbh_service_accounts_to_exclude_global): # Pass globals
+def extract_meeting_info(event, agent_email_global, nbh_service_accounts_to_exclude_global):
+    """
+    Extracts basic, non-inferential information from a calendar event.
+    The brand name itself is NOT processed here; it is extracted by the LLM later.
+    """
     event_id = event['id']
     summary = event.get('summary', 'No Title')
     start_str = event['start'].get('dateTime', event['start'].get('date'))
@@ -1402,190 +1459,37 @@ def extract_meeting_info(event, agent_email_global, nbh_service_accounts_to_excl
 
     nbh_attendees = []
     brand_attendees_info = []
-    brand_name_candidates_from_domain = set()
-    organizer_email = event.get('organizer', {}).get('email', '').lower()
 
-    # --- Attendee Processing & Domain Extraction ---
-    is_agent_invited = False
-    for attendee in attendees:
-        email = attendee.get('email','').lower()
-        name = attendee.get('displayName', email.split('@')[0] if '@' in email else email)
-
-        if email == agent_email_global.lower(): # Use passed global
-            is_agent_invited = True
-        elif '@nobroker.in' in email:
-            if email not in nbh_service_accounts_to_exclude_global: # Use passed global
-                 nbh_attendees.append({'email': email, 'name': name})
-        elif email:
-            brand_attendees_info.append({'name': name, 'email': email})
-            if '@' in email:
-                try:
-                    domain_full = email.split('@')[1]
-                    public_domains = ['gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com', 'aol.com', 'icloud.com']
-                    if not any(public_domain in domain_full.lower() for public_domain in public_domains):
-                        domain_part = domain_full.split('.')[0]
-                        if len(domain_part) > 1 and not domain_part.isdigit():
-                             brand_name_candidates_from_domain.add(domain_part.capitalize())
-                except IndexError: pass
-
-    if organizer_email and '@nobroker.in' not in organizer_email and '@' in organizer_email:
-        try:
-            domain_full = organizer_email.split('@')[1]
-            public_domains = ['gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com', 'aol.com', 'icloud.com']
-            if not any(public_domain in domain_full.lower() for public_domain in public_domains):
-                domain_part = domain_full.split('.')[0]
-                if len(domain_part) > 1 and not domain_part.isdigit():
-                    brand_name_candidates_from_domain.add(domain_part.capitalize())
-        except IndexError: pass
-
+    is_agent_invited = any(attendee.get('email', '').lower() == agent_email_global.lower() for attendee in attendees)
     if not is_agent_invited:
         print(f"  Skipping event '{summary}': {agent_email_global} is not an attendee.")
         return None
+
+    for attendee in attendees:
+        email = attendee.get('email', '').lower()
+        name = attendee.get('displayName', email.split('@')[0] if '@' in email else email)
+        if '@nobroker.in' in email:
+            if email not in nbh_service_accounts_to_exclude_global:
+                nbh_attendees.append({'email': email, 'name': name})
+        elif email:
+            brand_attendees_info.append({'name': name, 'email': email})
+
     if not brand_attendees_info:
         print(f"  Skipping event '{summary}': No external attendees.")
         return "NO_EXTERNAL_ATTENDEES"
 
-    # --- Brand Name Extraction Logic ---
-    # 1. Normalize and Initial Clean
-    processed_title = summary.lower()
-    processed_title = re.sub(r'\s+', ' ', processed_title).strip()
-
-    # Remove common email subject prefixes - CORRECTED
-    # This regex looks for the prefixes as whole words, optionally followed by a colon
-    # and then whitespace.
-    processed_title = re.sub(r'^\s*\b(fw|fwd|re|aw)\b\s*:?\s*', '', processed_title, flags=re.IGNORECASE).strip()
-    
-    # If the above didn't catch it (e.g., "FW:NoBroker..." without space after colon,
-    # or just "FW NoBroker..."), this second pass helps clean up the prefix word itself
-    # if it's at the very beginning followed by a space.
-    processed_title = re.sub(r'^\s*\b(fw|fwd|re|aw)\b\s+', '', processed_title, flags=re.IGNORECASE).strip()
-    
-    # Remove times/dates (simplified, assuming they are at the end or clearly separated)
-    # This is heuristic and might need adjustment if times are embedded complexly.
-    processed_title = re.sub(r'[,\s]*\b\d{1,2}(:\d{2})?(\s*(am|pm|hrs|hour))?\b(\s*-\s*\d{1,2}(:\d{2})?(\s*(am|pm|hrs|hour))?)?[,\s]*$', '', processed_title, flags=re.IGNORECASE).strip()
-    processed_title = re.sub(r'^\s*\b\d{1,2}(:\d{2})?(\s*(am|pm|hrs|hour))?\b\s*[,\-]?\s*', '', processed_title, flags=re.IGNORECASE).strip()
-
-
-    # 2. Define Keywords
-    nbh_entities_variations = [
-        "nobrokerhood", "no broker hood", "nb hood", "nobroker.com", "nobroker", "no broker", "nbh sales", "nbh team", "nbh"
-    ] # Added "nbh sales", "nbh team"
-    meeting_phrases_variations = [
-        "meeting with", "call with", "sync with", "discussion with", "connect with", "catch up with",
-        "commercial discussion", "proposal discussion", "introductory call", "intro call", "kick off", "kick-off",
-        "team meeting", "internal meeting", "quick sync", "follow up", "followup",
-        "online meeting", # Specific
-        "meeting", "call", "sync", "discussion", "proposal", "review", "update", "connect",
-        "team", "session", "chat", "catch up", "briefing", "brief", "agenda",
-        "commercial", "intro", "partnership with", "campaign" # Added partnership with
-    ]
-    common_conjunctions_separators = ["with", "and", "&", "for", "on", ":", "-", "/", "|"] # "x", "<>" handled separately
-
-    # Phrases for general cleaning, order by length (longer first) for more precise removal
-    phrases_to_remove_general = sorted(nbh_entities_variations + meeting_phrases_variations + ["discussion :"], key=len, reverse=True)
-
-    extracted_brand_name = ""
-
-    # --- Strategy A: Split by "X" or "<>" (Primary Strategy) ---
-    if not extracted_brand_name:
-        parts = re.split(r'\s+(x|<>)\s+', processed_title, maxsplit=1, flags=re.IGNORECASE)
-        if len(parts) == 3: # [part_before_sep, separator, part_after_sep]
-            part1_raw = parts[0].strip()
-            part2_raw = parts[2].strip()
-            
-            part1_is_nbh_side = any(nbh_ent in part1_raw for nbh_ent in nbh_entities_variations)
-            part2_is_nbh_side = any(nbh_ent in part2_raw for nbh_ent in nbh_entities_variations)
-
-            candidate_from_split = ""
-            if part2_is_nbh_side and not part1_is_nbh_side:
-                candidate_from_split = part1_raw
-            elif part1_is_nbh_side and not part2_is_nbh_side:
-                candidate_from_split = part2_raw
-            
-            if candidate_from_split:
-                temp_candidate = candidate_from_split
-                for p_remove in phrases_to_remove_general: # Clean the chosen side
-                    temp_candidate = re.sub(r'\b' + re.escape(p_remove) + r'\b', ' ', temp_candidate, flags=re.IGNORECASE)
-                temp_candidate = re.sub(r'\s+', ' ', temp_candidate).strip()
-                temp_candidate = re.sub(r'^[^\w\(\.&]+|[^\w\)\.&]+$', '', temp_candidate).strip() # Leading/trailing junk
-
-                if temp_candidate and len(temp_candidate) > 1 and \
-                   temp_candidate.lower() not in common_conjunctions_separators and \
-                   not temp_candidate.isdigit():
-                    extracted_brand_name = temp_candidate
-                    # print(f"  DEBUG: Brand from X/<> split: '{extracted_brand_name}'")
-
-    # --- Strategy B: Handle "follow up" / "followup" ---
-    if not extracted_brand_name:
-        follow_up_match = re.search(r'(.*?)(\b(follow up|followup)\b)(.*)', processed_title, re.IGNORECASE)
-        if follow_up_match:
-            potential_brand_sources = [follow_up_match.group(1).strip(), follow_up_match.group(4).strip()]
-            for part_str in potential_brand_sources:
-                if not part_str: continue
-                candidate = part_str
-                for p_remove in phrases_to_remove_general:
-                    candidate = re.sub(r'\b' + re.escape(p_remove) + r'\b', ' ', candidate, flags=re.IGNORECASE)
-                candidate = re.sub(r'\s+', ' ', candidate).strip()
-                candidate = re.sub(r'^[^\w\(\.&]+|[^\w\)\.&]+$', '', candidate).strip()
-
-                if candidate and len(candidate) > 1 and \
-                   candidate.lower() not in common_conjunctions_separators and \
-                   candidate.lower() not in nbh_entities_variations and \
-                   not candidate.isdigit():
-                    extracted_brand_name = candidate
-                    # print(f"  DEBUG: Brand from follow-up: '{extracted_brand_name}'")
-                    break 
-
-    # --- Strategy C: General Cleaning and Splitting (Fallback) ---
-    if not extracted_brand_name:
-        title_to_clean = processed_title
-        for phrase in phrases_to_remove_general:
-            title_to_clean = re.sub(r'\b' + re.escape(phrase) + r'\b', ' ', title_to_clean, flags=re.IGNORECASE)
-        title_to_clean = re.sub(r'\s+', ' ', title_to_clean).strip()
-        title_to_clean = re.sub(r'^[^\w\(\.&]+|[^\w\)\.&]+$', '', title_to_clean).strip() # Clean ends
-
-        if title_to_clean and len(title_to_clean) > 1 and \
-           title_to_clean.lower() not in common_conjunctions_separators and \
-           not title_to_clean.isdigit():
-            extracted_brand_name = title_to_clean # If anything meaningful is left
-            # print(f"  DEBUG: Brand from general clean: '{extracted_brand_name}'")
-
-
-    # --- Final Decision and Formatting ---
-    final_brand_name = "Unknown Brand"
-    if extracted_brand_name:
-        # Basic title casing. More complex casing (like all-caps) is ignored as per your request.
-        final_brand_name = " ".join(word.capitalize() for word in extracted_brand_name.split())
-    
-    # Fallback to domain name if extraction failed or result is poor
-    if final_brand_name == "Unknown Brand" or len(final_brand_name) <= 2 : # Stricter check for short results
-        if brand_name_candidates_from_domain:
-            # Prefer shorter domain names if multiple exist (e.g., "Acme" from "sales.acme.com")
-            sorted_domain_brands = sorted(list(brand_name_candidates_from_domain), key=len)
-            if sorted_domain_brands:
-                final_brand_name = sorted_domain_brands[0] # Take the shortest
-                # print(f"  DEBUG: Brand from domain fallback: '{final_brand_name}'")
-
-
-    # Final validation: if still unsatisfactory, mark as ambiguous
-    if final_brand_name == "Unknown Brand" or \
-       len(final_brand_name) <= 1 or \
-       (len(final_brand_name) <=2 and final_brand_name.lower() not in ['x']) or \
-       final_brand_name.lower() in phrases_to_remove_general or \
-       final_brand_name.lower() in common_conjunctions_separators:
-        # print(f"  DEBUG: Title '{summary}' -> Ambiguous after all strategies. Domains: {brand_name_candidates_from_domain}")
-        return "AMBIGUOUS_TITLE"
-    
-    # If we reach here, we have a final brand name to use
     return {
-        'id': event_id, 'title': summary, 'start_time_obj': start_time_obj,
+        'id': event_id,
+        'title': summary, # Return the raw title
+        'start_time_obj': start_time_obj,
         'start_time_str': start_time_obj.strftime("%Y-%m-%d %I:%M %p %Z (%A)"),
-        'location': location, 'description': description, 
-        'nbh_attendees': nbh_attendees, # This should be the human NBH attendees
-        'brand_attendees_info': brand_attendees_info, 
-        'brand_name': final_brand_name.strip().title(),
+        'location': location,
+        'description': description,
+        'nbh_attendees': nbh_attendees,
+        'brand_attendees_info': brand_attendees_info,
         'is_event_description_present_for_tagging': bool(event.get('description'))
     }
+
 
 # --- Gemini LLM Integration ---
 def configure_gemini():
@@ -2079,6 +1983,24 @@ def main():
 
         meeting_data_result = extract_meeting_info(event_payload, AGENT_EMAIL,NBH_SERVICE_ACCOUNTS_TO_EXCLUDE)
 
+        # --- Call the simplified LLM to get brand details ---
+        print(f"  Using LLM to extract brand details from title: '{meeting_data['title']}'")
+        brand_details = get_brand_details_from_title_with_llm(gemini_llm_model, meeting_data['title'])
+
+        # Check if the LLM extraction failed or was ambiguous
+        if brand_details['brand_name'] == 'Unknown Brand':
+            print(f"  Event '{meeting_data['title']}': Title is ambiguous for brand extraction by LLM.")
+            # ... (your existing notification logic for ambiguous titles) ...
+            continue
+
+        # --- Merge the LLM results into the main meeting_data dictionary ---
+        meeting_data.update(brand_details) # Adds brand_name and industry
+
+        current_brand_name_for_meeting = meeting_data['brand_name']
+        target_brand_industry = meeting_data['industry']
+        
+        print(f"  LLM identified Brand: '{current_brand_name_for_meeting}', Industry: '{target_brand_industry}'")
+        
         if meeting_data_result is None: # brandvmeet not accepted
             save_processed_event_id(event_id) # Mark locally to avoid re-evaluating simple skips
             tag_event_as_processed(calendar_service, event_id) # Also tag in calendar
