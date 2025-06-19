@@ -2,6 +2,7 @@ import datetime
 import os.path
 import time
 import base64
+import traceback
 from email.mime.text import MIMEText
 import io # For GDrive downloads
 import re
@@ -1971,67 +1972,59 @@ def main():
 
         print(f"\nProcessing event: '{event_summary}' (ID: {event_id})")
 
-        # Robust check for "already processed" using calendar event tags
+        # Step 1: Check if the event has already been processed
         if is_event_already_tagged(event_description_for_tag_check):
-            print(f"  Skipping event '{event_summary}': Already tagged as processed in calendar description.")
+            print(f"  Skipping event '{event_summary}': Already tagged as processed.")
             continue
         
-        # Fallback for local runs if tagging isn't working or not yet implemented fully
         if event_id in processed_ids_local_file:
-            print(f"  Skipping event '{event_summary}': Found in local processed_event_ids.txt (might be redundant if tagging works).")
+            print(f"  Skipping event '{event_summary}': Found in local processed file.")
             continue
 
-        meeting_data_result = extract_meeting_info(event_payload, AGENT_EMAIL,NBH_SERVICE_ACCOUNTS_TO_EXCLUDE)
+        # Step 2: Extract basic meeting info (attendees, raw title, etc.)
+        meeting_data_result = extract_meeting_info(event_payload, AGENT_EMAIL, NBH_SERVICE_ACCOUNTS_TO_EXCLUDE)
 
-        # --- Call the simplified LLM to get brand details ---
-        print(f"  Using LLM to extract brand details from title: '{meeting_data['title']}'")
-        brand_details = get_brand_details_from_title_with_llm(gemini_llm_model, meeting_data['title'])
-
-        # Check if the LLM extraction failed or was ambiguous
-        if brand_details['brand_name'] == 'Unknown Brand':
-            print(f"  Event '{meeting_data['title']}': Title is ambiguous for brand extraction by LLM.")
-            # ... (your existing notification logic for ambiguous titles) ...
+        # Step 3: Handle the possible "skip" results from the extraction
+        if meeting_data_result is None: # Case where agent is not an attendee
+            print(f"  Skipping event '{event_summary}': Agent is not an attendee.")
+            save_processed_event_id(event_id)
+            tag_event_as_processed(calendar_service, event_id)
             continue
-
-        # --- Merge the LLM results into the main meeting_data dictionary ---
-        meeting_data.update(brand_details) # Adds brand_name and industry
-
-        current_brand_name_for_meeting = meeting_data['brand_name']
-        target_brand_industry = meeting_data['industry']
-        
-        print(f"  LLM identified Brand: '{current_brand_name_for_meeting}', Industry: '{target_brand_industry}'")
-        
-        if meeting_data_result is None: # brandvmeet not accepted
-            save_processed_event_id(event_id) # Mark locally to avoid re-evaluating simple skips
-            tag_event_as_processed(calendar_service, event_id) # Also tag in calendar
-            continue 
         
         if meeting_data_result == "NO_EXTERNAL_ATTENDEES":
             print(f"  Event '{event_summary}': No external attendees. No brief needed.")
             save_processed_event_id(event_id)
             tag_event_as_processed(calendar_service, event_id)
             continue
-        
-        if meeting_data_result == "AMBIGUOUS_TITLE":
-            print(f"  Event '{event_summary}': Title is ambiguous for brand extraction.")
-            ambiguous_body_html = f"""
-            <html><body><p>The pre-meeting brief agent could not reliably determine the brand for the meeting:</p>
-            <p><b>Event:</b> {event_summary}<br>
-            <b>Scheduled:</b> {event_payload['start'].get('dateTime', event_payload['start'].get('date'))}</p>
-            <p>To ensure briefs are generated correctly, please use clear and consistent meeting titles. Suggestions:
-            <ul><li>'NBH / [Brand Name] - Kick-off'</li><li>'[Brand Name] & NoBrokerHood - Proposal Discussion'</li></ul></p>
-            <p>No brief was generated for this meeting.</p></body></html>"""
-            send_notification_email(gmail_service, 
-                                    f"Action Required: Ambiguous Title for Meeting - {event_summary}",
-                                    ambiguous_body_html)
+
+        # Step 4: If we are here, extraction was successful. Assign the result to meeting_data.
+        # This is the key fix: assign the dictionary before trying to use it.
+        meeting_data = meeting_data_result
+
+        # Step 5: Use the LLM to get the brand name and industry from the raw title
+        print(f"  Using LLM to extract brand details from title: '{meeting_data['title']}'")
+        brand_details = get_brand_details_from_title_with_llm(gemini_llm_model, meeting_data['title'])
+
+        # Step 6: Handle ambiguous result from the LLM
+        if brand_details['brand_name'] == 'Unknown Brand':
+            print(f"  Event '{meeting_data['title']}': Title is ambiguous for brand extraction by LLM.")
+            # Your notification logic for ambiguous titles can go here if needed.
+            # Example:
+            # ambiguous_body_html = f"..."
+            # send_notification_email(...)
             save_processed_event_id(event_id)
-            tag_event_as_processed(calendar_service, event_id)
+            tag_event_as_processed(calendar_service, event_id) # Tag it so we don't retry
             continue
 
-        # If we reached here, meeting_data_result is the actual data dictionary
-        meeting_data = meeting_data_result
-        current_brand_name_for_meeting = meeting_data['brand_name']
+        # Step 7: Merge the successful LLM results into the main meeting_data dictionary
+        meeting_data.update(brand_details)
 
+        current_brand_name_for_meeting = meeting_data['brand_name']
+        target_brand_industry = meeting_data['industry']
+        
+        print(f"  LLM identified Brand: '{current_brand_name_for_meeting}', Industry: '{target_brand_industry}'")
+
+        
         # Initialize before the if block
         internal_nbh_data_for_brand_str = "Internal NBH Data: Not fetched or processed due to service issues."
         internal_data_result = { # Default structure if services fail
@@ -2150,9 +2143,6 @@ def main():
             print(f"  Drive/Sheets service not available. Skipping internal data fetch and leadership alert for '{current_brand_name_for_meeting}'.")
             # internal_nbh_data_for_brand_str is already set to a default message.
             # internal_data_result default structure will ensure subsequent checks don't fail.
-
-
-
 
 
         if not gemini_llm_model:
