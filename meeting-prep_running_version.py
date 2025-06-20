@@ -1313,7 +1313,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                 f"**This upcoming meeting appears to be a DIRECT FOLLOW-UP based on attendee overlap with past meeting(s).** "
                 f"The brief should heavily focus on continuity, previous discussions, and action items.\n\n"
             )
-            for mtg_data_llm in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
+            for mtg_data_llm in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]:
                 # ... (Your DETAILED formatting logic for LLM for direct follow-up)
                 # Accessing mtg_data_llm['discussion'], mtg_data_llm['actions'] etc.
                 date_llm = mtg_data_llm.get("date_obj", datetime.date.min).strftime("%Y-%m-%d") # ...
@@ -1330,7 +1330,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                 f"These were separate discussions. Relevant high-level context from past interactions is noted below. "
                 f"This is NOT a direct continuation of specific action items from these past meetings unless otherwise indicated by the meeting title or current attendees.\n\n"
             )
-            for mtg_data_llm in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
+            for mtg_data_llm in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]:
                 # ... (Your CONDENSED formatting logic for LLM for non-direct follow-up)
                 date_llm = mtg_data_llm.get("date_obj", datetime.date.min).strftime("%Y-%m-%d") # ...
                 row_idx_llm = mtg_data_llm.get("original_row_info", {}).get("row_index", "N/A")
