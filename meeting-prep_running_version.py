@@ -1029,7 +1029,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     # Extract brand name from the previous meeting row
                     prev_meeting_brand_name_from_sheet = ""
                     if len(row_values) > prev_meetings_brand_col_idx and row_values[prev_meetings_brand_col_idx] is not None:
-                        prev_meeting_brand_name_from_sheet = str(row_values[prev_meetings_brand_col_idx]).strip()
+                        raw_brand_str = str(row_values[prev_meetings_brand_col_idx])
+                        prev_meeting_brand_name_from_sheet = raw_brand_str.replace(u'\xa0', ' ').strip()
 
                     # --- START OF TARGETED DEBUG BLOCK ---
                     # Only print if the sheet brand name (lowercase) potentially contains the target brand name (lowercase)
