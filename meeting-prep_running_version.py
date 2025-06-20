@@ -1541,7 +1541,7 @@ def configure_gemini():
         genai.configure(api_key=GEMINI_API_KEY)
         # Using a specific model version. 1.5 Flash is faster and cheaper for many tasks.
         # For higher quality, consider 'gemini-1.5-pro-latest'.
-        model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         print(f"Gemini model '{model.model_name}' configured successfully.")
         return model
     except Exception as e:
@@ -1892,7 +1892,7 @@ def send_brief_email(gmail_service, meeting_data, brief_content):
     # nbh_recipient_emails = [att['email'] for att in meeting_data['nbh_attendees'] if att['email'] != AGENT_EMAIL]
     
     # For testing, override recipients:
-    # nbh_recipient_emails = [ADMIN_EMAIL_FOR_NOTIFICATIONS]
+    nbh_recipient_emails = [ADMIN_EMAIL_FOR_NOTIFICATIONS]
     # print(f"DEBUG: Intended brief recipients: {nbh_recipient_emails}")
 
     if not nbh_recipient_emails:
