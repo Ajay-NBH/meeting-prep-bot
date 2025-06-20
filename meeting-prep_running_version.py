@@ -1272,12 +1272,12 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
         
         # Add a debug print RIGHT HERE:
         print(f"DEBUG (get_internal_nbh_data): is_overall_direct_follow_up calculated as: {is_overall_direct_follow_up}")
-        for i, mtg_debug in enumerate(matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]):
+        for i, mtg_debug in enumerate(matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]):
             print(f"  DEBUG (get_internal_nbh_data): Prev Mtg {i+1} - is_direct_follow_up_candidate: {mtg_debug.get('is_direct_follow_up_candidate', False)}")
             
         # Build `condensed_past_meetings_for_alert` if not a direct follow-up
         if not is_overall_direct_follow_up:
-            for mtg_data_alert in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_NOTE]:
+            for mtg_data_alert in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]:
                 date_display_alert = mtg_data_alert.get("date_obj", datetime.date.min).strftime("%Y-%m-%d") if mtg_data_alert.get("date_obj", datetime.date.min) != datetime.date.min else "Date N/A"
                 discussion_summary_alert = mtg_data_alert.get('discussion', 'N/A')
                 if len(discussion_summary_alert) > 150: discussion_summary_alert = discussion_summary_alert[:147] + "..."
