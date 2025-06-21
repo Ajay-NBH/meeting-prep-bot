@@ -1238,165 +1238,122 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                  final_context_parts_for_llm.append(f"## Information from '{file_name}':\n{file_data_object[:500]}...\n")# --- Other files (not specifically handled) ---
 
 
-    # --- Process Accumulated Previous Meeting Data (after all files are checked) ---
+    # --- Process Accumulated Previous Meeting Data (FINAL, COMPLETE VERSION) ---
     is_overall_direct_follow_up = False
+    has_other_past_interactions = False
     condensed_past_meetings_for_alert = []
-    previous_meeting_notes_for_llm_list = [] # Specific list for LLM summary of past meetings
+    previous_meeting_notes_for_llm_list = []
 
     if matching_previous_meetings_details_accumulator:
+        # Sort the entire collection of meetings by date, descending.
         matching_previous_meetings_details_accumulator.sort(key=lambda x: x.get("date_obj", datetime.date.min), reverse=True)
-        #MAX_PREVIOUS_MEETINGS_TO_NOTE = 3
-        MAX_PREVIOUS_MEETINGS_TO_ANALYZE = 5
 
-        # STEP 3: Take the TOP N most recent meetings for analysis.
+        # Set the number of recent meetings to analyze
+        MAX_PREVIOUS_MEETINGS_TO_ANALYZE = 5
         latest_meetings_to_analyze = matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]
-        
-        # Now, perform the detailed parsing and name comparison ONLY on this recent subset.
+
+        # --- STEP 1: Populate full details and determine follow-up status for each recent meeting ---
         for mtg_data in latest_meetings_to_analyze:
             row_info = mtg_data['original_row_info']
             row_values = row_info['values']
-            
-            # Define a helper to safely get cell values
+
+            # Helper to safely get cell values from the row
             def get_cell_val_from_row(col_idx, default="N/A"):
                 if col_idx != -1 and len(row_values) > col_idx and row_values[col_idx] is not None and str(row_values[col_idx]).strip():
                     return str(row_values[col_idx]).strip()
                 return default
 
+            # THIS IS THE COMPLETE POPULATION OF ALL REQUIRED FIELDS
             mtg_data["discussion"] = get_cell_val_from_row(prev_meetings_key_discussion_col_idx)
             mtg_data["actions"] = get_cell_val_from_row(prev_meetings_action_items_col_idx)
             mtg_data["key_questions"] = get_cell_val_from_row(prev_meetings_key_questions_col_idx)
             mtg_data["brand_traits"] = get_cell_val_from_row(prev_meetings_brand_traits_col_idx)
             mtg_data["customer_needs"] = get_cell_val_from_row(prev_meetings_customer_needs_col_idx)
-            mtg_data["client_pain_points"] = get_cell_val_from_row(prev_meetings_client_pain_points_col_idx)     
+            mtg_data["client_pain_points"] = get_cell_val_from_row(prev_meetings_client_pain_points_col_idx)
 
-            # Perform the follow-up check by comparing names
+            # Perform the name comparison to set the follow-up flag for this specific meeting
             mtg_data["is_direct_follow_up_candidate"] = False
-            if prev_meetings_client_participants_col_idx != -1 and prev_meetings_nbh_participants_col_idx != -1:
-                prev_client_names_str = get_cell_val_from_row(prev_meetings_client_participants_col_idx, "")
-                prev_nbh_names_str = get_cell_val_from_row(prev_meetings_nbh_participants_col_idx, "")
-
-                prev_client_attendee_names = parse_names_from_cell_helper(prev_client_names_str)
-                prev_nbh_attendee_names_from_sheet_raw = parse_names_from_cell_helper(prev_nbh_names_str)
-                
-                prev_nbh_attendee_names_for_followup_check_sheet = { name for name in prev_nbh_attendee_names_from_sheet_raw if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP }
-                
-                # Use the flexible matching function
-                common_nbh_attendees = find_common_attendees(
-                    current_nbh_attendee_names_for_followup_check,
-                    prev_nbh_attendee_names_for_followup_check_sheet
-                )
-
-                if common_nbh_attendees:
-                    mtg_data["is_direct_follow_up_candidate"] = True
-
-        # Now, determine the overall follow-up status based on the analyzed recent meetings
-        is_overall_direct_follow_up = any(
-            mtg.get("is_direct_follow_up_candidate", False) 
-            for mtg in latest_meetings_to_analyze
-        )
-        
-        # Add a debug print RIGHT HERE:
-        print(f"DEBUG (get_internal_nbh_data): is_overall_direct_follow_up calculated as: {is_overall_direct_follow_up}")
-        for i, mtg_debug in enumerate(matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]):
-            print(f"  DEBUG (get_internal_nbh_data): Prev Mtg {i+1} - is_direct_follow_up_candidate: {mtg_debug.get('is_direct_follow_up_candidate', False)}")
+            prev_nbh_names_str = get_cell_val_from_row(prev_meetings_nbh_participants_col_idx, "")
+            prev_nbh_attendee_names_from_sheet_raw = parse_names_from_cell_helper(prev_nbh_names_str)
+            prev_nbh_attendee_names_for_followup_check_sheet = { name for name in prev_nbh_attendee_names_from_sheet_raw if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP }
             
-        # Build `condensed_past_meetings_for_alert` if not a direct follow-up
-        if not is_overall_direct_follow_up:
-            for mtg_data_alert in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]:
-                date_display_alert = mtg_data_alert.get("date_obj", datetime.date.min).strftime("%Y-%m-%d") if mtg_data_alert.get("date_obj", datetime.date.min) != datetime.date.min else "Date N/A"
-                discussion_summary_alert = mtg_data_alert.get('discussion', 'N/A')
-                if len(discussion_summary_alert) > 150: discussion_summary_alert = discussion_summary_alert[:147] + "..."
-                
-                prev_nbh_participants_list_alert = []
-                # Use prev_meetings_nbh_participants_col_idx (which was set when the sheet was processed)
-                if prev_meetings_nbh_participants_col_idx != -1 and \
-                   'original_row_info' in mtg_data_alert and \
-                   'values' in mtg_data_alert['original_row_info'] and \
-                   len(mtg_data_alert['original_row_info']['values']) > prev_meetings_nbh_participants_col_idx:
-                    
-                    raw_nbh_str_alert = mtg_data_alert['original_row_info']['values'][prev_meetings_nbh_participants_col_idx]
-                    parsed_nbh_names_alert = parse_names_from_cell_helper(str(raw_nbh_str_alert))
-                    human_nbh_names_alert = {
-                        name for name in parsed_nbh_names_alert 
-                        if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP and name != AGENT_EMAIL.lower().split('@')[0]
-                    }
-                    prev_nbh_participants_list_alert = list(human_nbh_names_alert)
-
-                condensed_past_meetings_for_alert.append({
-                    "date": date_display_alert,
-                    "discussion_summary": discussion_summary_alert,
-                    "nbh_team": ", ".join(prev_nbh_participants_list_alert) if prev_nbh_participants_list_alert else "N/A"
-                })
-        
-        # Build `previous_meeting_notes_for_llm_list` based on `is_overall_direct_follow_up`
-        # This is where you use your Option 1 logic from before (detailed vs. condensed for LLM)
-        source_file_name_prev_meetings = matching_previous_meetings_details_accumulator[0].get('source_file_name', 'Previous Meetings Sheet') if matching_previous_meetings_details_accumulator else 'Previous Meetings Sheet'
-        previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}' (from '{source_file_name_prev_meetings}'):\n")
-
-        if is_overall_direct_follow_up:
-            previous_meeting_notes_for_llm_list.append(
-                f"**This upcoming meeting appears to be a DIRECT FOLLOW-UP based on attendee overlap with past meeting(s).** "
-                f"The brief should heavily focus on continuity, previous discussions, and action items.\n\n"
+            common_nbh_attendees = find_common_attendees(
+                current_nbh_attendee_names_for_followup_check,
+                prev_nbh_attendee_names_for_followup_check_sheet
             )
-            for mtg_data_llm in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]:
-                # ... (Your DETAILED formatting logic for LLM for direct follow-up)
-                # Accessing mtg_data_llm['discussion'], mtg_data_llm['actions'] etc.
-                date_llm = mtg_data_llm.get("date_obj", datetime.date.min).strftime("%Y-%m-%d") # ...
-                row_idx_llm = mtg_data_llm.get("original_row_info", {}).get("row_index", "N/A")
-                note_parts_llm = [f"### Previous Meeting on {date_llm} (Row: {row_idx_llm})\n"]
-                if mtg_data_llm.get('discussion') != "N/A": note_parts_llm.append(f"- Key Discussion: {mtg_data_llm['discussion']}\n")
-                if mtg_data_llm.get('actions') != "N/A": note_parts_llm.append(f"- Action Items: {mtg_data_llm['actions']}\n")
-                # Add other fields as needed
-                note_parts_llm.append("---\n")
-                previous_meeting_notes_for_llm_list.append("".join(note_parts_llm))
-        else: # Not an overall direct follow-up
+            if common_nbh_attendees:
+                mtg_data["is_direct_follow_up_candidate"] = True
+
+        # --- STEP 2: Categorize the fully populated meetings ---
+        direct_follow_up_meetings = [m for m in latest_meetings_to_analyze if m.get("is_direct_follow_up_candidate")]
+        other_past_meetings = [m for m in latest_meetings_to_analyze if not m.get("is_direct_follow_up_candidate")]
+
+        # Update the main flags based on the categorization
+        is_overall_direct_follow_up = bool(direct_follow_up_meetings)
+        has_other_past_interactions = bool(other_past_meetings)
+
+        # --- STEP 3: Build the sophisticated context for the LLM brief ---
+        previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}':\n")
+
+        if direct_follow_up_meetings:
             previous_meeting_notes_for_llm_list.append(
-                f"NBH has had previous interactions with '{current_target_brand_name}'. "
-                f"These were separate discussions. Relevant high-level context from past interactions is noted below. "
-                f"This is NOT a direct continuation of specific action items from these past meetings unless otherwise indicated by the meeting title or current attendees.\n\n"
+                "### Actionable Follow-Up Items (from meetings with attendee overlap):\n"
+                "This upcoming meeting appears to be a DIRECT FOLLOW-UP to the specific meetings listed below. The brief should heavily focus on continuity, previous discussions, and action items from these engagements.\n\n"
             )
-            for mtg_data_llm in matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]:
-                # ... (Your CONDENSED formatting logic for LLM for non-direct follow-up)
-                date_llm = mtg_data_llm.get("date_obj", datetime.date.min).strftime("%Y-%m-%d") # ...
-                row_idx_llm = mtg_data_llm.get("original_row_info", {}).get("row_index", "N/A")
-                note_parts_llm = [f"### Previous Interaction on {date_llm} (Row: {row_idx_llm})\n"]
-                if mtg_data_llm.get('discussion') != "N/A": note_parts_llm.append(f"- General Topic: {mtg_data_llm['discussion'][:200]}...\n") # Example
-                if mtg_data_llm.get('brand_traits') != "N/A": note_parts_llm.append(f"- Observed Brand Traits: {mtg_data_llm['brand_traits']}\n")
-                note_parts_llm.append("---\n")
-                previous_meeting_notes_for_llm_list.append("".join(note_parts_llm))
-    else: # No previous meeting details found for this brand in any sheet
-        previous_meeting_notes_for_llm_list.append(f"## Previous NBH Meetings:\nNo previous meeting records found specifically for '{current_target_brand_name}'.\n")
+            for mtg_data_llm in direct_follow_up_meetings:
+                date_llm = mtg_data_llm.get("date_obj", datetime.date.min).strftime("%Y-%m-%d")
+                note_parts = [f"**Previous Meeting on {date_llm}:**\n"]
+                if mtg_data_llm.get('discussion') != "N/A": note_parts.append(f"- Key Discussion: {mtg_data_llm['discussion']}\n")
+                if mtg_data_llm.get('actions') != "N/A": note_parts.append(f"- Action Items: {mtg_data_llm['actions']}\n")
+                if mtg_data_llm.get('key_questions') != "N/A": note_parts.append(f"- Key Client Questions: {mtg_data_llm['key_questions']}\n")
+                if mtg_data_llm.get('client_pain_points') != "N/A": note_parts.append(f"- Client Pain Points Discussed: {mtg_data_llm['client_pain_points']}\n")
+                note_parts.append("---\n")
+                previous_meeting_notes_for_llm_list.append("".join(note_parts))
 
-    final_context_parts_for_llm.append("".join(previous_meeting_notes_for_llm_list))
-    
+        if other_past_meetings:
+            previous_meeting_notes_for_llm_list.append(
+                "\n### General Context from Other Past Interactions:\n"
+                "NBH has had other, separate discussions with this brand. The high-level context below is for awareness and should not be treated as direct action items for this upcoming meeting.\n\n"
+            )
+            for mtg_data_llm in other_past_meetings:
+                date_llm = mtg_data_llm.get("date_obj", datetime.date.min).strftime("%Y-%m-%d")
+                note_parts = [f"**Past Interaction on {date_llm}:**\n"]
+                if mtg_data_llm.get('discussion') != "N/A": note_parts.append(f"- General Topic: {mtg_data_llm['discussion'][:200]}...\n")
+                if mtg_data_llm.get('brand_traits') != "N/A": note_parts.append(f"- Observed Brand Traits: {mtg_data_llm['brand_traits']}\n")
+                if mtg_data_llm.get('customer_needs') != "N/A": note_parts.append(f"- Identified Customer Needs: {mtg_data_llm['customer_needs']}\n")
+                note_parts.append("---\n")
+                previous_meeting_notes_for_llm_list.append("".join(note_parts))
 
+        # --- STEP 4: Build data for the leadership alert email ---
+        # The alert should contain info about the "other" meetings that are NOT direct follow-ups.
+        for mtg_data_alert in other_past_meetings:
+            date_display = mtg_data_alert.get("date_obj").strftime("%Y-%m-%d")
+            discussion_summary = (mtg_data_alert.get('discussion', 'N/A')[:150] + "...")
+            raw_nbh_str_alert = mtg_data_alert['original_row_info']['values'][prev_meetings_nbh_participants_col_idx]
+            parsed_nbh_names_alert = parse_names_from_cell_helper(str(raw_nbh_str_alert))
+            human_nbh_names_alert = { name for name in parsed_nbh_names_alert if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP }
+            nbh_team_str = ", ".join(human_nbh_names_alert) if human_nbh_names_alert else "N/A"
+            
+            condensed_past_meetings_for_alert.append({
+                "date": date_display,
+                "discussion_summary": discussion_summary,
+                "nbh_team": nbh_team_str
+            })
 
-
-
-    # --- Finalize LLM Summary String ---
-    if not final_context_parts_for_llm:
-        llm_summary_output_str = "No specifically relevant internal NBH data could be extracted for this brand.\n"
     else:
-        llm_summary_output_str = "\n\n".join(final_context_parts_for_llm)
-        # Your truncation logic for llm_summary_output_str
-        MAX_TOTAL_WORDS_FOR_LLM_CONTEXT = 45000 
-        current_word_count = len(llm_summary_output_str.split())
-        if current_word_count > MAX_TOTAL_WORDS_FOR_LLM_CONTEXT:
-            # Simple character-based truncation if needed
-            char_limit = int(MAX_TOTAL_WORDS_FOR_LLM_CONTEXT * 5.5) # Approximate
-            if len(llm_summary_output_str) > char_limit:
-                 llm_summary_output_str = llm_summary_output_str[:char_limit] + "\n... [Overall internal data truncated]"
+        # This block handles the case where no previous meetings were found at all.
+        previous_meeting_notes_for_llm_list.append(f"## Previous NBH Meetings:\nNo previous meeting records found for '{current_target_brand_name}'.\n")
 
+    # --- Finalize the return dictionary ---
+    final_context_parts_for_llm.append("".join(previous_meeting_notes_for_llm_list))
+    llm_summary_output_str = "\n\n".join(final_context_parts_for_llm)
     final_llm_summary_for_return = f"--- Targeted Internal NBH Data & Summaries for {current_target_brand_name} ---\n\n{llm_summary_output_str}\n--- End of Targeted Internal NBH Data & Summaries ---\n"
 
-    # Just before returning:
-    print(f"DEBUG (get_internal_nbh_data): FINAL is_overall_direct_follow_up before return: {is_overall_direct_follow_up}")
-                                        
     return {
         "llm_summary_string": final_llm_summary_for_return,
         "is_overall_direct_follow_up": is_overall_direct_follow_up,
-        "has_previous_interactions": bool(matching_previous_meetings_details_accumulator),
-        "condensed_past_meetings_for_alert": condensed_past_meetings_for_alert 
+        "has_other_past_interactions": has_other_past_interactions,
+        "condensed_past_meetings_for_alert": condensed_past_meetings_for_alert
     }
 
 # --- Calendar Processing ---
@@ -1982,45 +1939,9 @@ def main():
     gemini_llm_model = configure_gemini()
 
 
-    # --- REMOVED: Pre-processing of campaign sheets for all brand industries ---
-    # --- Pre-process campaign sheets to get all brand industries (uses cache) ---
-   # campaign_sheets_to_process_for_industries = [
-    #    {'file_name_keyword': FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower(), 'brand_name_column_header': "Brand Name"},
-    #    {'file_name_keyword': FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower(), 'brand_name_column_header': "Brand Name"}
-    #]
-
-
-    # Pass "" for sheets_service if it's already initialized above
-    #all_campaign_brands_industry_map = {}
-    #if drive_service and sheets_service: # LLM availability checked inside the function
-    #    all_campaign_brands_industry_map = get_and_infer_industries_for_all_campaign_brands(
-    #        drive_service,
-    #        sheets_service,
-    #        gemini_llm_model,
-    #        campaign_sheets_to_process_for_industries,
-    #        batch_size=25 # Optionally override default batch_size here
-    #    )
-    
-    #elif os.path.exists(INFERRED_INDUSTRIES_CACHE_FILE): # If drive/sheets not available, but cache exists
-    #    all_campaign_brands_industry_map = load_inferred_industries_cache()
-    #    print("Drive/Sheets service not fully available. Loaded industries from existing cache.")
-    #else: # No services, no cache
-    #    print("Drive/Sheets service not fully available and no cache found. Industry map will be empty.")
-
-
-    
-
     if not calendar_service: # Critical service
         print("Exiting: Calendar service failed to initialize.")
         return
-
-    # Load internal data once per run
-    #internal_nbh_data_summary = "Internal NBH Data: Not fetched (Drive service issue or not configured)."
-    #if drive_service and gemini_llm_model: # Only fetch if we can use it
-    #     internal_nbh_data_summary = get_internal_nbh_data_summary(drive_service,sheets_service)
-    #elif not gemini_llm_model:
-    #    internal_nbh_data_summary = "Internal NBH Data: Not fetched (LLM not available)."
-
 
     upcoming_events = get_upcoming_meetings(calendar_service)
     if not upcoming_events:
@@ -2123,94 +2044,103 @@ def main():
         
         
                 
-        # --- >>> LEADERSHIP ALERT LOGIC <<< ---
-        if has_prev_interactions_in_main and not is_overall_follow_up_in_main:
-            print("DEBUG: Leadership alert condition MET in main.")
-            alert_subject = f"FYI: New Separate Meeting Scheduled with Existing Brand - {current_brand_name_for_meeting}"
+        # --- >>> LEADERSHIP ALERT LOGIC (FINAL, CORRECTED VERSION) <<< ---
 
-            # --- PRE-FETCH VALUES FROM current_meeting_data ---
-            meeting_title_for_alert = meeting_data.get('title', 'N/A')
-            meeting_time_str_for_alert = meeting_data.get('start_time_str', 'N/A')
+        # Step 1: Extract the flags and data we need from the internal data check.
+        is_direct_follow_up = internal_data_result.get("is_overall_direct_follow_up", False)
+        has_other_interactions = internal_data_result.get("has_other_past_interactions", False)
+        condensed_meetings_for_alert = internal_data_result.get("condensed_past_meetings_for_alert", [])
+
+        # Helper variables for the email body
+        upcoming_meeting_title = meeting_data.get('title', 'N/A')
+        upcoming_nbh_attendees_list = [att['name'] for att in meeting_data.get('nbh_attendees', [])]
+        upcoming_nbh_attendees_str = ", ".join(upcoming_nbh_attendees_list) if upcoming_nbh_attendees_list else "N/A"
 
 
-            # Prepare attendee strings for the alert email
-            nbh_attendees_list_for_alert = meeting_data.get('nbh_attendees', [])
-            brand_attendees_list_for_alert = meeting_data.get('brand_attendees_info', [])
-
-            nbh_attendees_str_alert = ', '.join(
-                sorted(list(set(att.get('name', att.get('email', 'Unknown NBH Attendee')) for att in nbh_attendees_list_for_alert)))
-            ) if nbh_attendees_list_for_alert else "N/A"
+        # SCENARIO 1: "Hybrid" Engagement - A follow-up, but other separate threads also exist.
+        if is_direct_follow_up and has_other_interactions:
+            print("DEBUG: HYBRID SCENARIO DETECTED. Sending nuanced leadership alert.")
             
-            brand_attendees_str_alert = ', '.join(
-                sorted(list(set(att.get('name', att.get('email', 'Unknown Brand Attendee')) for att in brand_attendees_list_for_alert)))
-            ) if brand_attendees_list_for_alert else "N/A"
-
+            alert_subject = f"FYI: Complex Engagement with {current_brand_name_for_meeting} (Follow-up & Separate Threads)"
+            
             alert_body_html = f"""
-            <html><head><style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                ul {{ margin-top: 5px; }}
-                li {{ margin-bottom: 5px; }}
-                p {{ margin-bottom: 10px; }}
-            </style></head><body>
-            <p>Hello Leadership Team,</p>
-            <p>This is an automated notification from the NBH Meeting Prep Agent.</p>
-            <p>A new meeting has been scheduled with <b>{current_brand_name_for_meeting}</b>, a brand NBH has interacted with previously.
-            However, this upcoming meeting does NOT appear to be a direct follow-up to recent specific discussions based on attendee overlap with those prior engagements.</p>
-            
-            <p><b>Upcoming Meeting Details:</b></p>
-            <ul>
-                <li><b>Title:</b> {meeting_data.get('title', 'N/A')}</li>
-                <li><b>Date & Time:</b> {meeting_data.get('start_time_str', 'N/A')}</li>
-                <li><b>NBH Attendees:</b> {nbh_attendees_str_alert}</li>
-                <li><b>Brand Attendees:</b> {brand_attendees_str_alert}</li>
-            </ul>
-            
-            <p><b>Context:</b> While NBH has past interactions with {current_brand_name_for_meeting}, this particular upcoming engagement may involve different primary NBH or client participants, or represent a distinct initiative. 
-            This could indicate a new opportunity, a different team from the brand reaching out, or a new NBH team engaging.</p>
-            
-            <p>You might want to ensure internal alignment and share any relevant historical context across NBH teams engaging with this brand.</p>
+            <html><head><style> body {{ font-family: Arial, sans-serif; }} li {{ margin-bottom: 8px; }} </style></head>
+            <body>
+                <p>Hello Leadership Team,</p>
+                <p>A new meeting has been scheduled with <b>{current_brand_name_for_meeting}</b>. This engagement is complex and requires coordination:</p>
+                <ul style="list-style-type:square;">
+                    <li>It appears to be a <b>direct follow-up</b> to some recent discussions.</li>
+                    <li>However, there are also <b>other, separate historical interactions</b> with this brand.</li>
+                </ul>
+                <p><b>Upcoming Meeting Details:</b></p>
+                <ul>
+                    <li><b>Title:</b> {upcoming_meeting_title}</li>
+                    <li><b>NBH Attendees:</b> {upcoming_nbh_attendees_str}</li>
+                </ul>
+                <p>This highlights a need for internal coordination. Context on the separate past interactions is below for awareness:</p>
+                <ul>
             """
+            if condensed_meetings_for_alert:
+                for past_mtg in condensed_meetings_for_alert:
+                    alert_body_html += f"<li><b>{past_mtg['date']}:</b> {past_mtg['discussion_summary']} (NBH Team: {past_mtg['nbh_team']})</li>"
+            alert_body_html += "</ul><p>Best regards,<br>NBH Meeting Prep Agent</p></body></html>"
             
-            condensed_past_meetings = internal_data_result.get("condensed_past_meetings_for_alert", [])
-            if condensed_past_meetings:
-                alert_body_html += "<p><b>Summary of Most Recent (Separate) Previous Interactions:</b></p><ul>"
-                for past_mtg_summary in condensed_past_meetings:
-                    alert_body_html += (
-                        f"<li><b>{past_mtg_summary.get('date', 'N/A')}:</b> {past_mtg_summary.get('discussion_summary', 'N/A')} "
-                        f"(NBH Team Involved: {past_mtg_summary.get('nbh_team', 'N/A')})</li>"
-                    )
-                alert_body_html += "</ul>"
-            else:
-                # This case should ideally not happen if has_previous_interactions is True,
-                # but good to have a fallback message.
-                alert_body_html += "<p>Note: Past interactions with this brand exist, but specific summaries for this alert were not generated or available in this run.</p>"
-
-            alert_body_html += """
-            <p>No action is strictly required from this email; it is for your awareness and potential coordination.</p>
-            <p>Best regards,<br>NBH Meeting Prep Agent</p>
-            </body></html>
-            """
-            
-            #leadership_emails = ["sristi.agarwal@nobroker.in", "rohit.c@nobroker.in"] # Add the second email
-            
-            if gmail_service:
-                email_message_body_for_leadership = create_email_message(
-                    sender=AGENT_EMAIL, 
+            # --- CORRECT EMAIL SENDING LOGIC ---
+            if gmail_service and leadership_emails:
+                email_message = create_email_message(
+                    sender=AGENT_EMAIL,
                     to_emails_list=leadership_emails,
                     subject=alert_subject,
                     message_text_html=alert_body_html
                 )
-                send_gmail_message(gmail_service, 'me', email_message_body_for_leadership)
-                print(f"    Leadership alert sent for separate meeting with {current_brand_name_for_meeting}")
+                send_gmail_message(gmail_service, 'me', email_message)
+                print(f"    Leadership alert for HYBRID scenario with {current_brand_name_for_meeting} sent.")
             else:
-                print(f"    WARNING: Leadership alert for {current_brand_name_for_meeting} NOT sent (Gmail service unavailable).")
-        # --- END OF LEADERSHIP ALERT LOGIC ---
+                print(f"    WARNING: Leadership alert for {current_brand_name_for_meeting} NOT sent (Gmail service or recipient list unavailable).")
+
+
+        # SCENARIO 2: "Purely Separate" Engagement - Not a follow-up, but other past interactions exist.
+        elif has_other_interactions and not is_direct_follow_up:
+            print("DEBUG: PURELY SEPARATE THREAD DETECTED. Sending standard leadership alert.")
+            
+            alert_subject = f"FYI: New Meeting Scheduled with Existing Brand - {current_brand_name_for_meeting}"
+            
+            alert_body_html = f"""
+            <html><head><style> body {{ font-family: Arial, sans-serif; }} li {{ margin-bottom: 8px; }} </style></head>
+            <body>
+                <p>Hello Leadership Team,</p>
+                <p>A new meeting has been scheduled with <b>{current_brand_name_for_meeting}</b>. This meeting does <b>NOT</b> appear to be a direct follow-up to recent discussions.</p>
+                <p>This could indicate a new opportunity or a new NBH team engaging with the client.</p>
+                <p><b>Upcoming Meeting Details:</b></p>
+                <ul>
+                    <li><b>Title:</b> {upcoming_meeting_title}</li>
+                    <li><b>NBH Attendees:</b> {upcoming_nbh_attendees_str}</li>
+                </ul>
+                <p><b>Summary of Past Interactions (for context):</b></p>
+                <ul>
+            """
+            if condensed_meetings_for_alert:
+                for past_mtg in condensed_meetings_for_alert:
+                    alert_body_html += f"<li><b>{past_mtg['date']}:</b> {past_mtg['discussion_summary']} (NBH Team: {past_mtg['nbh_team']})</li>"
+            alert_body_html += "</ul><p>Best regards,<br>NBH Meeting Prep Agent</p></body></html>"
+            
+            # --- CORRECT EMAIL SENDING LOGIC ---
+            if gmail_service and leadership_emails:
+                email_message = create_email_message(
+                    sender=AGENT_EMAIL,
+                    to_emails_list=leadership_emails,
+                    subject=alert_subject,
+                    message_text_html=alert_body_html
+                )
+                send_gmail_message(gmail_service, 'me', email_message)
+                print(f"    Leadership alert for SEPARATE THREAD with {current_brand_name_for_meeting} sent.")
+            else:
+                print(f"    WARNING: Leadership alert for {current_brand_name_for_meeting} NOT sent (Gmail service or recipient list unavailable).")
+
+        else:
+            # This covers the "clean" cases: a brand-new meeting or a simple follow-up with no other threads.
+            print("DEBUG: No leadership alert needed (Clean new meeting or simple follow-up).")
     
-        # This else corresponds to "if drive_service and sheets_service:"
-        else: 
-            print(f"  Drive/Sheets service not available. Skipping internal data fetch and leadership alert for '{current_brand_name_for_meeting}'.")
-            # internal_nbh_data_for_brand_str is already set to a default message.
-            # internal_data_result default structure will ensure subsequent checks don't fail.
 
 
         if not gemini_llm_model:
