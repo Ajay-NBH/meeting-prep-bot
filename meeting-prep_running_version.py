@@ -1858,7 +1858,7 @@ def send_gmail_message(gmail_service, user_id, message_body):
         return None
 
 def send_brief_email(gmail_service, meeting_data, brief_content):
-    EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in"} # Define a set of excluded emails
+    EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in","pia.hood@nobroker.in"} # Define a set of excluded emails
 
     nbh_recipient_emails = []
     attendees_list = meeting_data.get('nbh_attendees', []) 
@@ -1870,10 +1870,10 @@ def send_brief_email(gmail_service, meeting_data, brief_content):
                 if attendee_email and isinstance(attendee_email, str) and attendee_email.lower() not in EXCLUDED_EMAILS:
                     nbh_recipient_emails.append(attendee_email)
 
-    # nbh_recipient_emails = [att['email'] for att in meeting_data['nbh_attendees'] if att['email'] != AGENT_EMAIL]
+    nbh_recipient_emails = [att['email'] for att in meeting_data['nbh_attendees'] if att['email'] != AGENT_EMAIL]
     
     # For testing, override recipients:
-    nbh_recipient_emails = [ADMIN_EMAIL_FOR_NOTIFICATIONS]
+    # nbh_recipient_emails = [ADMIN_EMAIL_FOR_NOTIFICATIONS]
     # print(f"DEBUG: Intended brief recipients: {nbh_recipient_emails}")
 
     if not nbh_recipient_emails:
