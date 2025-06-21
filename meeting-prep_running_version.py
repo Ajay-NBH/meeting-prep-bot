@@ -364,12 +364,9 @@ def list_files_in_gdrive_folder(drive_service, folder_id):
 # THIS IS THE PRIMARY FUNCTION TO GET FILE DATA
 def get_structured_gdrive_file_data(drive_service, sheets_service, file_id, file_name, mime_type):
     """
-    Reads content from various file types in Google Drive.
-    For PPTX (Google Slides export or native PPTX), returns a list of {"slide_number": X, "text": "content"} dicts.
-    For Google Sheets or XLSX, returns a list of {"sheet_name": S, "row_index": R, "header": H, "values": V} dicts.
-    For other text-based files, returns a single string of content.
-    Returns a string error message if parsing fails for a specific type.
-    """
+    Extracts and parses structured content from a Google Drive file based on its MIME type.
+    
+    Supports Google Slides (as PPTX), Microsoft PowerPoint, Google Sheets, Microsoft Excel, Google Docs, PDFs, and plain text files. Returns structured data as a list of dictionaries for presentations and spreadsheets, or as a string for text-based files. If parsing fails or the file type is unsupported, returns a descriptive error message.
     print(f"    Attempting to read structured data for: {file_name} (MIME: {mime_type})")
 
     MIMETYPE_GOOGLE_SHEET = 'application/vnd.google-apps.spreadsheet'
@@ -587,7 +584,20 @@ def summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, f
 def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_model, 
                                     current_target_brand_name,target_brand_industry,current_meeting_data,EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL):
     # ... (initial checks for services and folder ID remain) ...
-    print(f"Fetching and processing internal NBH data for target brand '{current_target_brand_name}'...")
+    """
+                                    Fetches and processes internal NBH data relevant to a target brand for an upcoming meeting, aggregating summaries, campaign data, and previous meeting insights.
+                                    
+                                    This function collects and analyzes various internal files from Google Drive (pitch decks, case studies, campaign sheets, platform metrics, and previous meetings) to build a comprehensive context string for LLM-based brief generation. It extracts and cleans attendee names, identifies relevant campaign and case study data, and processes previous meeting records to determine if the upcoming meeting is a direct follow-up or if there are other past interactions with the brand. The function returns a structured summary for LLM input, flags for follow-up and past interactions, and a condensed summary of past meetings for leadership alerts.
+                                    
+                                    Returns:
+                                        dict: {
+                                            "llm_summary_string": Aggregated context string for LLM brief generation,
+                                            "is_overall_direct_follow_up": True if the meeting is a direct follow-up based on attendee overlap,
+                                            "has_other_past_interactions": True if there are other past meetings with the brand,
+                                            "condensed_past_meetings_for_alert": List of summarized past meetings for leadership notification
+                                        }
+                                    """
+                                    print(f"Fetching and processing internal NBH data for target brand '{current_target_brand_name}'...")
     all_files_in_folder = list_files_in_gdrive_folder(drive_service, NBH_GDRIVE_FOLDER_ID) # Ensure this is called
     
     if not all_files_in_folder: # Add check for empty list
@@ -1259,6 +1269,16 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
 
             # Helper to safely get cell values from the row
             def get_cell_val_from_row(col_idx, default="N/A"):
+                """
+                Retrieve and clean the value from a specified column index in a row, returning a default if the value is missing or empty.
+                
+                Parameters:
+                	col_idx (int): The index of the column to retrieve.
+                	default (str): The value to return if the cell is missing or empty.
+                
+                Returns:
+                	str: The stripped string value from the specified column, or the default if not present.
+                """
                 if col_idx != -1 and len(row_values) > col_idx and row_values[col_idx] is not None and str(row_values[col_idx]).strip():
                     return str(row_values[col_idx]).strip()
                 return default
@@ -1515,6 +1535,12 @@ def extract_meeting_info(event, agent_email_global, nbh_service_accounts_to_excl
 
 # --- Gemini LLM Integration ---
 def configure_gemini():
+    """
+    Configures and returns a Gemini LLM model instance using the provided API key.
+    
+    Returns:
+        A configured Gemini GenerativeModel object if successful, or None if configuration fails or the API key is missing.
+    """
     if not GEMINI_API_KEY:
         print("GEMINI_API_KEY environment variable not set. LLM will not function.")
         return None
@@ -1846,6 +1872,16 @@ def create_email_message(sender, to_emails_list, subject, message_text_html):
 
 def send_gmail_message(gmail_service, user_id, message_body):
     # ... (same as before) ...
+    """
+    Sends an email message using the Gmail API.
+    
+    Parameters:
+        user_id (str): The user's email address or the special value 'me' to indicate the authenticated user.
+        message_body (dict): The message payload, typically created by create_email_message().
+    
+    Returns:
+        dict or None: The API response containing the sent message details, or None if sending fails.
+    """
     if not gmail_service:
         print("  Gmail service not available. Cannot send email.")
         return None
@@ -1858,6 +1894,11 @@ def send_gmail_message(gmail_service, user_id, message_body):
         return None
 
 def send_brief_email(gmail_service, meeting_data, brief_content):
+    """
+    Sends a pre-meeting brief email to NBH internal attendees for a given meeting.
+    
+    The function filters out excluded emails from the NBH attendee list, converts the brief content from markdown to HTML, formats the email body, and sends the email using the Gmail API. If no eligible recipients are found, the function exits without sending an email.
+    """
     EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in","pia.hood@nobroker.in"} # Define a set of excluded emails
 
     nbh_recipient_emails = []
@@ -1927,6 +1968,20 @@ def send_notification_email(gmail_service, subject, body_html, recipient=ADMIN_E
 
 # --- Main Execution Logic ---
 def main():
+    """
+    Main orchestration function for automated pre-meeting brief generation and notification.
+    
+    This function coordinates the end-to-end workflow for preparing and emailing pre-meeting briefs for upcoming client meetings managed by the agent account. It initializes required Google Workspace services and the Gemini LLM, fetches upcoming calendar events, and processes each event as follows:
+    
+    - Skips events already processed or tagged.
+    - Extracts meeting details and identifies the brand and industry using the LLM.
+    - Retrieves and summarizes relevant internal NBH data for the brand.
+    - Determines if the meeting is a direct follow-up or involves separate historical threads, and sends leadership alert emails as needed.
+    - Generates a detailed pre-meeting brief using the LLM and internal data.
+    - Emails the brief to NBH attendees, tags the event as processed, sets a 1-hour reminder, and records the event as processed.
+    
+    Handles error conditions gracefully, including missing services, ambiguous brand extraction, and LLM failures, with appropriate notifications and fallback logic.
+    """
     print(f"Script started at {datetime.datetime.now()}")
     print(f"Using NBH GDrive Folder ID: {NBH_GDRIVE_FOLDER_ID}")
 
