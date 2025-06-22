@@ -598,8 +598,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                                             "has_other_past_interactions": True if there are other past meetings with the brand,
                                             "condensed_past_meetings_for_alert": List of summarized past meetings for leadership notification
                                         }
-                                    """
-                                    print(f"Fetching and processing internal NBH data for target brand '{current_target_brand_name}'...")
+    """
+    print(f"Fetching and processing internal NBH data for target brand '{current_target_brand_name}'...")
     all_files_in_folder = list_files_in_gdrive_folder(drive_service, NBH_GDRIVE_FOLDER_ID) # Ensure this is called
     
     if not all_files_in_folder: # Add check for empty list
