@@ -1241,6 +1241,22 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
     condensed_past_meetings_for_alert = []
     previous_meeting_notes_for_llm_list = []
 
+    # Helper to safely get cell values from the row
+    def get_cell_val_from_row(row_values, col_idx, default="N/A"):
+        """
+        Retrieve and clean the value from a specified column index in a row, returning a default if the value is missing or empty.
+        
+        Parameters:
+            col_idx (int): The index of the column to retrieve.
+            default (str): The value to return if the cell is missing or empty.
+        
+        Returns:
+            str: The stripped string value from the specified column, or the default if not present.
+        """
+        if col_idx != -1 and len(row_values) > col_idx and row_values[col_idx] is not None and str(row_values[col_idx]).strip():
+            return str(row_values[col_idx]).strip()
+        return default
+
     if matching_previous_meetings_details_accumulator:
         # Sort the entire collection of meetings by date, descending.
         matching_previous_meetings_details_accumulator.sort(key=lambda x: x.get("date_obj", datetime.date.min), reverse=True)
@@ -1249,21 +1265,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
         MAX_PREVIOUS_MEETINGS_TO_ANALYZE = 5
         latest_meetings_to_analyze = matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]
 
-        # Helper to safely get cell values from the row
-        def get_cell_val_from_row(row_values, col_idx, default="N/A"):
-            """
-            Retrieve and clean the value from a specified column index in a row, returning a default if the value is missing or empty.
-            
-            Parameters:
-                col_idx (int): The index of the column to retrieve.
-                default (str): The value to return if the cell is missing or empty.
-            
-            Returns:
-                str: The stripped string value from the specified column, or the default if not present.
-            """
-            if col_idx != -1 and len(row_values) > col_idx and row_values[col_idx] is not None and str(row_values[col_idx]).strip():
-                return str(row_values[col_idx]).strip()
-            return default
 
 
 
@@ -1278,8 +1279,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
             mtg_data["actions"] = get_cell_val_from_row(row_values, prev_meetings_action_items_col_idx)
             mtg_data["key_questions"] = get_cell_val_from_row(row_values, prev_meetings_key_questions_col_idx)
             mtg_data["brand_traits"] = get_cell_val_from_row(row_values, prev_meetings_brand_traits_col_idx)
-            mtg_data["customer_needs"] = get_cell_val_from_row(row_values ,prev_meetings_customer_needs_col_idx)
-            mtg_data["client_pain_points"] = get_cell_val_from_row(row_values ,prev_meetings_client_pain_points_col_idx)
+            mtg_data["customer_needs"] = get_cell_val_from_row(row_values, prev_meetings_customer_needs_col_idx)
+            mtg_data["client_pain_points"] = get_cell_val_from_row(row_values, prev_meetings_client_pain_points_col_idx)
 
             # Perform the name comparison to set the follow-up flag for this specific meeting
             mtg_data["is_direct_follow_up_candidate"] = False
