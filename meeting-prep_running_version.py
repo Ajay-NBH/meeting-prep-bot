@@ -587,17 +587,16 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                                     current_target_brand_name,target_brand_industry,current_meeting_data,EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL):
     # ... (initial checks for services and folder ID remain) ...
     """
-                                    Fetches and processes internal NBH data relevant to a target brand for an upcoming meeting, aggregating summaries, campaign data, and previous meeting insights.
-                                    
-                                    This function collects and analyzes various internal files from Google Drive (pitch decks, case studies, campaign sheets, platform metrics, and previous meetings) to build a comprehensive context string for LLM-based brief generation. It extracts and cleans attendee names, identifies relevant campaign and case study data, and processes previous meeting records to determine if the upcoming meeting is a direct follow-up or if there are other past interactions with the brand. The function returns a structured summary for LLM input, flags for follow-up and past interactions, and a condensed summary of past meetings for leadership alerts.
-                                    
-                                    Returns:
-                                        dict: {
-                                            "llm_summary_string": Aggregated context string for LLM brief generation,
-                                            "is_overall_direct_follow_up": True if the meeting is a direct follow-up based on attendee overlap,
-                                            "has_other_past_interactions": True if there are other past meetings with the brand,
-                                            "condensed_past_meetings_for_alert": List of summarized past meetings for leadership notification
-                                        }
+    Fetches and processes internal NBH data relevant to a target brand for an upcoming meeting, aggregating summaries, campaign data, and previous meeting insights.
+    
+    This function collects and analyzes various internal files from Google Drive (pitch decks, case studies, campaign sheets, platform metrics, and previous meetings) to build a comprehensive context string for LLM-based brief generation. It extracts and cleans attendee names, identifies relevant campaign and case study data, and processes previous meeting records to determine if the upcoming meeting is a direct follow-up or if there are other past interactions with the brand. The function returns a structured summary for LLM input, flags for follow-up and past interactions, and a condensed summary of past meetings for leadership alerts.
+    Returns:
+        dict: {
+            "llm_summary_string": Aggregated context string for LLM brief generation,
+            "is_overall_direct_follow_up": True if the meeting is a direct follow-up based on attendee overlap,
+            "has_other_past_interactions": True if there are other past meetings with the brand,
+            "condensed_past_meetings_for_alert": List of summarized past meetings for leadership notification
+        }
     """
     print(f"Fetching and processing internal NBH data for target brand '{current_target_brand_name}'...")
     all_files_in_folder = list_files_in_gdrive_folder(drive_service, NBH_GDRIVE_FOLDER_ID) # Ensure this is called
@@ -1026,8 +1025,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     prev_meetings_customer_needs_col_idx = -1
                     prev_meetings_client_pain_points_col_idx = -1
                     continue # Skip further processing for this file
-
-                matching_previous_meetings_details = []                
+            
                 all_past_meetings_for_brand = []
 
                 for row_info in file_data_object:
@@ -1051,26 +1049,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     target_brand_lower = current_target_brand_name.lower()
                     sheet_brand_lower = prev_meeting_brand_name_from_sheet.lower()
 
-                    # Define the specific rows we want to investigate
-                    #rows_to_debug = {'1037', '1038', '1041', '1055', '1099', '1103'}
-                    #current_row_index_str = str(row_info.get('row_index', ''))
 
-                    # Only print the detailed debug info IF the current row is one we're interested in.
-                    #if current_row_index_str in rows_to_debug:
-                    #    print("\n" + "-"*20 + f" TARGETED DEBUG FOR ROW {current_row_index_str} " + "-"*20)
-                    #    print(f"Target Brand (from LLM) : '{target_brand_lower}'")
-                    #    print(f"Sheet Brand (cleaned)   : '{sheet_brand_lower}'")
-                    #    print("--- DETAILS ---")
-                    #    print(f"repr(Target): {repr(target_brand_lower)}")
-                    #    print(f"repr(Sheet) : {repr(sheet_brand_lower)}")
-                    #    print(f"len(Target) : {len(target_brand_lower)}")
-                    #    print(f"len(Sheet)  : {len(sheet_brand_lower)}")
-                    #    print(f"bytes(Target): {target_brand_lower.encode('utf-8', 'surrogateescape')}")
-                    #    print(f"bytes(Sheet) : {sheet_brand_lower.encode('utf-8', 'surrogateescape')}")
-                    #    is_match = (sheet_brand_lower == target_brand_lower)
-                    #    print(f"Comparison Result         : {is_match}")
-                    #    print("-"*70)
-                    # --- END OF MODIFIED FORENSIC DEBUG BLOCK ---
 
 
 
@@ -1270,38 +1249,41 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
         MAX_PREVIOUS_MEETINGS_TO_ANALYZE = 5
         latest_meetings_to_analyze = matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]
 
+        # Helper to safely get cell values from the row
+        def get_cell_val_from_row(row_values, col_idx, default="N/A"):
+            """
+            Retrieve and clean the value from a specified column index in a row, returning a default if the value is missing or empty.
+            
+            Parameters:
+                col_idx (int): The index of the column to retrieve.
+                default (str): The value to return if the cell is missing or empty.
+            
+            Returns:
+                str: The stripped string value from the specified column, or the default if not present.
+            """
+            if col_idx != -1 and len(row_values) > col_idx and row_values[col_idx] is not None and str(row_values[col_idx]).strip():
+                return str(row_values[col_idx]).strip()
+            return default
+
+
+
         # --- STEP 1: Populate full details and determine follow-up status for each recent meeting ---
         for mtg_data in latest_meetings_to_analyze:
             row_info = mtg_data['original_row_info']
             row_values = row_info['values']
 
-            # Helper to safely get cell values from the row
-            def get_cell_val_from_row(col_idx, default="N/A"):
-                """
-                Retrieve and clean the value from a specified column index in a row, returning a default if the value is missing or empty.
-                
-                Parameters:
-                	col_idx (int): The index of the column to retrieve.
-                	default (str): The value to return if the cell is missing or empty.
-                
-                Returns:
-                	str: The stripped string value from the specified column, or the default if not present.
-                """
-                if col_idx != -1 and len(row_values) > col_idx and row_values[col_idx] is not None and str(row_values[col_idx]).strip():
-                    return str(row_values[col_idx]).strip()
-                return default
 
             # THIS IS THE COMPLETE POPULATION OF ALL REQUIRED FIELDS
-            mtg_data["discussion"] = get_cell_val_from_row(prev_meetings_key_discussion_col_idx)
-            mtg_data["actions"] = get_cell_val_from_row(prev_meetings_action_items_col_idx)
-            mtg_data["key_questions"] = get_cell_val_from_row(prev_meetings_key_questions_col_idx)
-            mtg_data["brand_traits"] = get_cell_val_from_row(prev_meetings_brand_traits_col_idx)
-            mtg_data["customer_needs"] = get_cell_val_from_row(prev_meetings_customer_needs_col_idx)
-            mtg_data["client_pain_points"] = get_cell_val_from_row(prev_meetings_client_pain_points_col_idx)
+            mtg_data["discussion"] = get_cell_val_from_row(row_values, prev_meetings_key_discussion_col_idx)
+            mtg_data["actions"] = get_cell_val_from_row(row_values, prev_meetings_action_items_col_idx)
+            mtg_data["key_questions"] = get_cell_val_from_row(row_values, prev_meetings_key_questions_col_idx)
+            mtg_data["brand_traits"] = get_cell_val_from_row(row_values, prev_meetings_brand_traits_col_idx)
+            mtg_data["customer_needs"] = get_cell_val_from_row(row_values ,prev_meetings_customer_needs_col_idx)
+            mtg_data["client_pain_points"] = get_cell_val_from_row(row_values ,prev_meetings_client_pain_points_col_idx)
 
             # Perform the name comparison to set the follow-up flag for this specific meeting
             mtg_data["is_direct_follow_up_candidate"] = False
-            prev_nbh_names_str = get_cell_val_from_row(prev_meetings_nbh_participants_col_idx, "")
+            prev_nbh_names_str = get_cell_val_from_row(row_values, prev_meetings_nbh_participants_col_idx, "")
             prev_nbh_attendee_names_from_sheet_raw = parse_names_from_cell_helper(prev_nbh_names_str)
             prev_nbh_attendee_names_for_followup_check_sheet = { name for name in prev_nbh_attendee_names_from_sheet_raw if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP }
             
@@ -1918,8 +1900,6 @@ def send_brief_email(gmail_service, meeting_data, brief_content):
                 attendee_email = att.get('email')
                 if attendee_email and isinstance(attendee_email, str) and attendee_email.lower() not in EXCLUDED_EMAILS:
                     nbh_recipient_emails.append(attendee_email)
-
-    nbh_recipient_emails = [att['email'] for att in meeting_data['nbh_attendees'] if att['email'] != AGENT_EMAIL]
     
     # For testing, override recipients:
     # nbh_recipient_emails = [ADMIN_EMAIL_FOR_NOTIFICATIONS]
