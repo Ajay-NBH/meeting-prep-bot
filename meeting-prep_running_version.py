@@ -1052,34 +1052,34 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     sheet_brand_lower = prev_meeting_brand_name_from_sheet.lower()
 
                     # Define the specific rows we want to investigate
-                    rows_to_debug = {'1037', '1038', '1041', '1055', '1099', '1103'}
-                    current_row_index_str = str(row_info.get('row_index', ''))
+                    #rows_to_debug = {'1037', '1038', '1041', '1055', '1099', '1103'}
+                    #current_row_index_str = str(row_info.get('row_index', ''))
 
                     # Only print the detailed debug info IF the current row is one we're interested in.
-                    if current_row_index_str in rows_to_debug:
-                        print("\n" + "-"*20 + f" TARGETED DEBUG FOR ROW {current_row_index_str} " + "-"*20)
-                        print(f"Target Brand (from LLM) : '{target_brand_lower}'")
-                        print(f"Sheet Brand (cleaned)   : '{sheet_brand_lower}'")
-                        print("--- DETAILS ---")
-                        print(f"repr(Target): {repr(target_brand_lower)}")
-                        print(f"repr(Sheet) : {repr(sheet_brand_lower)}")
-                        print(f"len(Target) : {len(target_brand_lower)}")
-                        print(f"len(Sheet)  : {len(sheet_brand_lower)}")
-                        print(f"bytes(Target): {target_brand_lower.encode('utf-8', 'surrogateescape')}")
-                        print(f"bytes(Sheet) : {sheet_brand_lower.encode('utf-8', 'surrogateescape')}")
-                        is_match = (sheet_brand_lower == target_brand_lower)
-                        print(f"Comparison Result         : {is_match}")
-                        print("-"*70)
+                    #if current_row_index_str in rows_to_debug:
+                    #    print("\n" + "-"*20 + f" TARGETED DEBUG FOR ROW {current_row_index_str} " + "-"*20)
+                    #    print(f"Target Brand (from LLM) : '{target_brand_lower}'")
+                    #    print(f"Sheet Brand (cleaned)   : '{sheet_brand_lower}'")
+                    #    print("--- DETAILS ---")
+                    #    print(f"repr(Target): {repr(target_brand_lower)}")
+                    #    print(f"repr(Sheet) : {repr(sheet_brand_lower)}")
+                    #    print(f"len(Target) : {len(target_brand_lower)}")
+                    #    print(f"len(Sheet)  : {len(sheet_brand_lower)}")
+                    #    print(f"bytes(Target): {target_brand_lower.encode('utf-8', 'surrogateescape')}")
+                    #    print(f"bytes(Sheet) : {sheet_brand_lower.encode('utf-8', 'surrogateescape')}")
+                    #    is_match = (sheet_brand_lower == target_brand_lower)
+                    #    print(f"Comparison Result         : {is_match}")
+                    #    print("-"*70)
                     # --- END OF MODIFIED FORENSIC DEBUG BLOCK ---
 
 
 
 
-                    if target_brand_lower in sheet_brand_lower or \
-                       (sheet_brand_lower and target_brand_lower.startswith(sheet_brand_lower)) or \
-                       (target_brand_lower and sheet_brand_lower.startswith(target_brand_lower)) or \
-                       (target_brand_lower == "chitale" and "chitale" in sheet_brand_lower) or \
-                       (target_brand_lower == "giva" and "giva" in sheet_brand_lower) : # Add more specific checks if needed
+                    #if target_brand_lower in sheet_brand_lower or \
+                    #   (sheet_brand_lower and target_brand_lower.startswith(sheet_brand_lower)) or \
+                    #   (target_brand_lower and sheet_brand_lower.startswith(target_brand_lower)) or \
+                    #   (target_brand_lower == "chitale" and "chitale" in sheet_brand_lower) or \
+                    #   (target_brand_lower == "giva" and "giva" in sheet_brand_lower) : # Add more specific checks if needed
 
                         #print(f"    TARGETED_PREV_MTG_DEBUG (Row {row_info.get('row_index', 'N/A')} in sheet '{file_name}'):")
                         #print(f"        Current Target Brand (Original) : '{current_target_brand_name}'")
@@ -1090,12 +1090,18 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                         # Optional: Byte representation for very tricky cases
                         # print(f"        Bytes Current Target (lower): {target_brand_lower.encode('utf-8', 'surrogateescape')}")
                         # print(f"        Bytes Sheet Brand (lower)   : {sheet_brand_lower.encode('utf-8', 'surrogateescape')}")
-                        is_match = (sheet_brand_lower == target_brand_lower)
+                        #is_match = (sheet_brand_lower == target_brand_lower)
                         #print(f"        Exact lowercase match?        : {is_match}")
                         #print(f"        ------------------------------------")
                     # --- END OF TARGETED DEBUG BLOCK ---
 
-                    if prev_meeting_brand_name_from_sheet.lower() == current_target_brand_name.lower():
+                    is_a_match = False
+                    if sheet_brand_lower and target_brand_lower: # Ensure neither is empty
+                        if (target_brand_lower in sheet_brand_lower or 
+                            sheet_brand_lower in target_brand_lower):
+                            is_a_match = True
+
+                    if is_a_match:
                         # This previous meeting was with the same brand
                         print(f"      MATCH FOUND for previous meeting row {row_info.get('row_index')}: Brand match for '{current_target_brand_name}'")
                         meeting_details_dict = {
