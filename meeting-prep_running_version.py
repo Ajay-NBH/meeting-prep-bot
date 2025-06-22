@@ -367,6 +367,8 @@ def get_structured_gdrive_file_data(drive_service, sheets_service, file_id, file
     Extracts and parses structured content from a Google Drive file based on its MIME type.
     
     Supports Google Slides (as PPTX), Microsoft PowerPoint, Google Sheets, Microsoft Excel, Google Docs, PDFs, and plain text files. Returns structured data as a list of dictionaries for presentations and spreadsheets, or as a string for text-based files. If parsing fails or the file type is unsupported, returns a descriptive error message.
+    """
+
     print(f"    Attempting to read structured data for: {file_name} (MIME: {mime_type})")
 
     MIMETYPE_GOOGLE_SHEET = 'application/vnd.google-apps.spreadsheet'
