@@ -1038,9 +1038,14 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     
                     # Extract brand name from the previous meeting row
                     prev_meeting_brand_name_from_sheet = ""
-                    if len(row_values) > prev_meetings_brand_col_idx and row_values[prev_meetings_brand_col_idx] is not None:
-                        raw_brand_str = str(row_values[prev_meetings_brand_col_idx])
-                        prev_meeting_brand_name_from_sheet = raw_brand_str.replace(u'\xa0', ' ').strip()
+
+                    if prev_meetings_brand_col_idx != -1 and len(row_values) > prev_meetings_brand_col_idx:
+                        # Use .strip() to remove whitespace AND non-breaking spaces
+                        prev_meeting_brand_name_from_sheet = str(row_values[prev_meetings_brand_col_idx] or "").strip()
+
+                    if not prev_meeting_brand_name_from_sheet:
+                        continue
+
 
                     # --- START OF TARGETED DEBUG BLOCK ---
                     # Only print if the sheet brand name (lowercase) potentially contains the target brand name (lowercase)
@@ -1048,11 +1053,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     # This condition is intentionally broad to catch near misses or partial matches for debugging.
                     target_brand_lower = current_target_brand_name.lower()
                     sheet_brand_lower = prev_meeting_brand_name_from_sheet.lower()
-
-
-
-
-
 
                     #if target_brand_lower in sheet_brand_lower or \
                     #   (sheet_brand_lower and target_brand_lower.startswith(sheet_brand_lower)) or \
@@ -1075,18 +1075,34 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     # --- END OF TARGETED DEBUG BLOCK ---
 
                     is_a_match = False
-                    if sheet_brand_lower and target_brand_lower: # Ensure neither is empty
-                        if (target_brand_lower in sheet_brand_lower or 
-                            sheet_brand_lower in target_brand_lower):
-                            is_a_match = True
+
+                    # Allow shorter matches for exact comparisons, but require longer for partial matches
+                    MIN_EXACT_MATCH_LEN = 2  # For brands like "3M", "LG"
+                    MIN_PARTIAL_MATCH_LEN = 3  # For substring matching
+
+
+                    # Rule 1: Always check for an exact match first. This is the best signal.
+                    if target_brand_lower == sheet_brand_lower and len(target_brand_lower) >= MIN_EXACT_MATCH_LEN:
+                        is_a_match = True
+                    # Rule 2: If no exact match, check if one contains the other,
+                    # BUT only if the shorter string is long enough to be meaningful.
+                    else:
+                        if len(target_brand_lower) < len(sheet_brand_lower):
+                            shorter_str, longer_str = target_brand_lower, sheet_brand_lower
+                        else:
+                            shorter_str, longer_str = sheet_brand_lower, target_brand_lower
+
+                        if len(shorter_str) >= MIN_PARTIAL_MATCH_LEN and shorter_str in longer_str:
+                            if re.search(r'\b' + re.escape(shorter_str) + r'\b', longer_str):
+                                is_a_match = True
 
                     if is_a_match:
                         # This previous meeting was with the same brand
                         print(f"      MATCH FOUND for previous meeting row {row_info.get('row_index')}: Brand match for '{current_target_brand_name}'")
                         meeting_details_dict = {
-                            "original_row_index": row_info.get("row_index", "N/A") # Get it here
+                            "original_row_index": row_info.get("row_index", "N/A"), # Get it here
+                            "original_row_info": row_info
                         }    
-                        meeting_details_dict = {"original_row_info": row_info} # Store original for later full extraction
                         try:
                             # Extract date for sorting (handle potential date parsing errors)
                             date_str = str(row_values[prev_meetings_date_col_idx]) if len(row_values) > prev_meetings_date_col_idx else None
@@ -1104,112 +1120,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                                 meeting_details_dict["date_obj"] = datetime.date.min
                         except Exception:
                             meeting_details_dict["date_obj"] = datetime.date.min # Fallback
-
-
-                        # Textual data
-                        #def get_cell_val_from_row(col_idx, default="N/A"):
-                        #    if col_idx != -1 and len(row_values) > col_idx and row_values[col_idx] is not None and str(row_values[col_idx]).strip():
-                        #        return str(row_values[col_idx]).strip()
-                        #    return default
-
-                        #meeting_details_dict["discussion"] = get_cell_val_from_row(prev_meetings_key_discussion_col_idx)
-                        #meeting_details_dict["actions"] = get_cell_val_from_row(prev_meetings_action_items_col_idx)
-                        #meeting_details_dict["key_questions"] = get_cell_val_from_row(prev_meetings_key_questions_col_idx)
-                        #meeting_details_dict["brand_traits"] = get_cell_val_from_row(prev_meetings_brand_traits_col_idx)
-                        #meeting_details_dict["customer_needs"] = get_cell_val_from_row(prev_meetings_customer_needs_col_idx)
-                        #meeting_details_dict["client_pain_points"] = get_cell_val_from_row(prev_meetings_client_pain_points_col_idx)              
-
-                        # Follow-up Check by Name
-                        #meeting_details_dict["is_direct_follow_up_candidate"] = False
-                        #if prev_meetings_client_participants_col_idx != -1 and prev_meetings_nbh_participants_col_idx != -1:
-                        #    prev_client_names_str = get_cell_val_from_row(prev_meetings_client_participants_col_idx, "")
-                        #    prev_nbh_names_str = get_cell_val_from_row(prev_meetings_nbh_participants_col_idx, "")
-
-                        #    prev_client_attendee_names = parse_names_from_cell_helper(prev_client_names_str)
-                        #    prev_nbh_attendee_names_from_sheet_raw = parse_names_from_cell_helper(prev_nbh_names_str)
-                            
-                        #    prev_nbh_attendee_names_for_followup_check_sheet = {
-                        #        name for name in prev_nbh_attendee_names_from_sheet_raw 
-                        #        if name not in EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP and name != AGENT_EMAIL.lower().split('@')[0]
-                        #    }
-
-
-                            # ---- ADD DEBUG PRINTS FOR NAME SETS ----
-                        #    print(f"    DEBUG (get_internal_nbh_data / PrevMtgCheck) - Current Target Brand: {current_target_brand_name}")
-                        #    print(f"    DEBUG (get_internal_nbh_data / PrevMtgCheck) - Prev Mtg Brand (Sheet): {prev_meeting_brand_name_from_sheet}")
-                        #    # Identify the previous meeting being checked, e.g., by its date or a key discussion point
-                        #    prev_mtg_date_debug = meeting_details_dict.get("date_obj", "Unknown Date").strftime("%Y-%m-%d")
-                        #    print(f"    DEBUG (get_internal_nbh_data / PrevMtgCheck) - Checking against Prev Mtg Date (Sheet): {prev_mtg_date_debug}")
-    #
-    #                        print(f"        Prev Client Names String (Sheet): '{prev_client_names_str}'")
-    #                        print(f"        Parsed Prev Client Names (Sheet): {prev_client_attendee_names}")
-     #                       print(f"        Current Brand Names (Calendar): {current_brand_attendee_names}")
-      #                      
-       #                     print(f"        Prev NBH Names String (Sheet): '{prev_nbh_names_str}'")
-        #                    print(f"        Parsed Prev NBH Names Raw (Sheet): {prev_nbh_attendee_names_from_sheet_raw}")
-         #                   print(f"        Parsed Prev NBH Names Filtered (Sheet): {prev_nbh_attendee_names_for_followup_check_sheet}")
-          #                  print(f"        Current NBH Names Filtered (Calendar): {current_nbh_attendee_names_for_followup_check}")
-                            # ---- END OF ADDED DEBUG PRINTS ----
-    
-                            
-                            
-                           # common_brand_attendees = current_brand_attendee_names.intersection(prev_client_attendee_names)
-                           
-                           # common_nbh_attendees = current_nbh_attendee_names_for_followup_check.intersection(prev_nbh_attendee_names_for_followup_check_sheet)
-
-                           # print(f"        Common Brand Attendees: {common_brand_attendees}")
-                           # print(f"        Common NBH Attendees: {common_nbh_attendees}")
-
-                            # MODIFIED Condition:
-                           # is_follow_up = False
-                           # if common_brand_attendees and common_nbh_attendees:
-                           #     # Strongest indication: overlap on both sides
-                           #     is_follow_up = True
-                           #     print(f"        Follow-up Reason: Brand AND NBH attendee overlap.")
-                           # elif common_nbh_attendees: 
-                           #     is_follow_up = True
-                           #     print(f"        Follow-up Reason: NBH attendee overlap detected.") # More general message
-
-
-                           # if is_follow_up:
-                           #     meeting_details_dict["is_direct_follow_up_candidate"] = True
-
-# ---- [NEW AND IMPROVED CODE BLOCK] ----
-                            # Use the new flexible matching function
-                        #    common_brand_attendees = find_common_attendees(
-                        #        current_brand_attendee_names, 
-                        #        prev_client_attendee_names
-                        #    )
-                        #    common_nbh_attendees = find_common_attendees(
-                        #        current_nbh_attendee_names_for_followup_check,
-                        #        prev_nbh_attendee_names_for_followup_check_sheet
-                        #    )
-
-                        #    print(f"        Common Brand Attendees (Flexible Match): {common_brand_attendees}")
-                        #    print(f"        Common NBH Attendees (Flexible Match): {common_nbh_attendees}")
-
-                            # Condition for a follow-up: There must be an overlap of NBH team members.
-                            # Brand attendee overlap is a good signal but NBH overlap is essential for our definition.
-                        #    is_follow_up = False
-                        #    if common_nbh_attendees:
-                        #        is_follow_up = True
-                        #        print(f"        Follow-up Reason: NBH attendee overlap detected (found {len(common_nbh_attendees)} common members).")
-                        #        if common_brand_attendees:
-                        #            print(f"        Follow-up Corroboration: Brand attendee overlap also detected.")
-                                
-                        #    if is_follow_up:
-                        #        meeting_details_dict["is_direct_follow_up_candidate"] = True
-                        #    # ---- [END OF NEW CODE BLOCK] ----
-
-                            
-                        #    print(f"        DECISION for this prev mtg: is_direct_follow_up_candidate = {meeting_details_dict['is_direct_follow_up_candidate']}")
-
-
-                            
-                            
-                            #if common_brand_attendees and common_nbh_attendees:
-                             #   meeting_details_dict["is_direct_follow_up_candidate"] = True
-                        #matching_previous_meetings_details_accumulator.append(meeting_details_dict)
                         all_past_meetings_for_brand.append(meeting_details_dict)
 
                 if all_past_meetings_for_brand:
