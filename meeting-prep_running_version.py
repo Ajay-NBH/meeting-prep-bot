@@ -9,7 +9,6 @@ import re
 import markdown 
 import json
 import fitz
-import re
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
