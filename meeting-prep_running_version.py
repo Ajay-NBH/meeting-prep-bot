@@ -1041,7 +1041,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
 
                     if prev_meetings_brand_col_idx != -1 and len(row_values) > prev_meetings_brand_col_idx:
                         # Use .strip() to remove whitespace AND non-breaking spaces
-                        prev_meeting_brand_name_from_sheet = str(row_values[prev_meetings_brand_col_idx] or "").strip()
+                        prev_meeting_brand_name_from_sheet = str(row_values[prev_meetings_brand_col_idx] or "").replace('\xa0', ' ').strip()
 
                     if not prev_meeting_brand_name_from_sheet:
                         continue
@@ -1076,28 +1076,39 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
 
                     is_a_match = False
 
-                    # Allow shorter matches for exact comparisons, but require longer for partial matches
-                    MIN_EXACT_MATCH_LEN = 2  # For brands like "3M", "LG"
-                    MIN_PARTIAL_MATCH_LEN = 3  # For substring matching
 
-
-                    # Rule 1: Always check for an exact match first. This is the best signal.
-                    if target_brand_lower == sheet_brand_lower and len(target_brand_lower) >= MIN_EXACT_MATCH_LEN:
-                        is_a_match = True
-                    # Rule 2: If no exact match, check if one contains the other,
-                    # BUT only if the shorter string is long enough to be meaningful.
+                    # Minimum length for a brand name to be considered for matching to avoid trivial matches (e.g., 'a', 'an')
+                    MIN_BRAND_NAME_LEN = 3 
+                    
+                    if len(target_brand_lower) < MIN_BRAND_NAME_LEN or len(sheet_brand_lower) < MIN_BRAND_NAME_LEN:
+                        # If either name is too short, only an exact match is allowed.
+                        if target_brand_lower == sheet_brand_lower:
+                            is_a_match = True
                     else:
-                        if len(target_brand_lower) < len(sheet_brand_lower):
-                            shorter_str, longer_str = target_brand_lower, sheet_brand_lower
+                        # Rule 1: Always prioritize an exact match. This is the strongest signal.
+                        if target_brand_lower == sheet_brand_lower:
+                            is_a_match = True
                         else:
-                            shorter_str, longer_str = sheet_brand_lower, target_brand_lower
-
-                        if len(shorter_str) >= MIN_PARTIAL_MATCH_LEN and shorter_str in longer_str:
-                            if re.search(r'\b' + re.escape(shorter_str) + r'\b', longer_str):
+                            # Rule 2: Use regex with word boundaries (\b) to check if one name is a
+                            # "whole word" component of the other. This prevents matching "advan" inside "advances".
+                            
+                            # Check if the (potentially shorter) target brand is a whole word in the sheet brand.
+                            # e.g., target="Chitale", sheet="Chitale Bandhu" -> MATCH
+                            regex_target_in_sheet = r'\b' + re.escape(target_brand_lower) + r'\b'
+                            if re.search(regex_target_in_sheet, sheet_brand_lower):
                                 is_a_match = True
+                            
+                            # Check if the (potentially shorter) sheet brand is a whole word in the target brand.
+                            # e.g., target="Meeting with Chitale Bandhu", sheet="Chitale Bandhu" -> MATCH
+                            else:
+                                regex_sheet_in_target = r'\b' + re.escape(sheet_brand_lower) + r'\b'
+                                if re.search(regex_sheet_in_target, target_brand_lower):
+                                    is_a_match = True
+                    
 
                     if is_a_match:
                         # This previous meeting was with the same brand
+                        print(f"    *** VERIFIED MATCH: Target='{target_brand_lower}' <==> Sheet='{sheet_brand_lower}'")
                         print(f"      MATCH FOUND for previous meeting row {row_info.get('row_index')}: Brand match for '{current_target_brand_name}'")
                         meeting_details_dict = {
                             "original_row_index": row_info.get("row_index", "N/A"), # Get it here
