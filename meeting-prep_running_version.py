@@ -1075,11 +1075,22 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     # --- END OF TARGETED DEBUG BLOCK ---
 
                     is_a_match = False
-                    if sheet_brand_lower and target_brand_lower: # Ensure neither is empty
-                        if (target_brand_lower in sheet_brand_lower or 
-                            sheet_brand_lower in target_brand_lower):
-                            is_a_match = True
+                    MIN_MATCH_LEN = 3 # A reasonable minimum length to avoid single-letter matches
 
+                    # Rule 1: Always check for an exact match first. This is the best signal.
+                    if target_brand_lower == sheet_brand_lower:
+                        is_a_match = True
+                    # Rule 2: If no exact match, check if one contains the other,
+                    # BUT only if the shorter string is long enough to be meaningful.
+                    else:
+                        if len(target_brand_lower) < len(sheet_brand_lower):
+                            shorter_str, longer_str = target_brand_lower, sheet_brand_lower
+                        else:
+                            shorter_str, longer_str = sheet_brand_lower, target_brand_lower
+
+                        if len(shorter_str) >= MIN_MATCH_LEN and shorter_str in longer_str:
+                            is_a_match = True
+                            
                     if is_a_match:
                         # This previous meeting was with the same brand
                         print(f"      MATCH FOUND for previous meeting row {row_info.get('row_index')}: Brand match for '{current_target_brand_name}'")
