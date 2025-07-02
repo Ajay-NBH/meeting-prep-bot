@@ -54,7 +54,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Set this environment variable
 # Google Drive Folder ID containing NBH data
 NBH_GDRIVE_FOLDER_ID = os.getenv("NBH_GDRIVE_FOLDER_ID") # Set env var or replace placeholder
 
-AGENT_EMAIL = os.getenv("AGENT_EMAIL") # Email of the agent account
+AGENT_EMAIL = "brand.vmeet@nobroker.in" # Email of the agent account
 ADMIN_EMAIL_FOR_NOTIFICATIONS = "ajay.saini@nobroker.in" # REPLACE with your actual email
 leadership_emails = ["sristi.agarwal@nobroker.in", "rohit.c@nobroker.in"] # Add the second email
 
