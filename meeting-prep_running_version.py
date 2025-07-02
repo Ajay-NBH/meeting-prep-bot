@@ -13,9 +13,11 @@ import fitz
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+from dotenv import load_dotenv
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
+from dotenv import load_dotenv
 
 
 import google.generativeai as genai
@@ -24,26 +26,35 @@ import google.generativeai as genai
 from pptx import Presentation
 import openpyxl
 
+# Load the .env file
+env = os.getenv("ENV", "dev")
+env_file = f".env.{env}"
 
+if not os.getenv("GITHUB_ACTIONS"):
+    load_dotenv(env_file)
+
+if not os.getenv("GITHUB_ACTIONS"):
+    load_dotenv(env_file)
 # --- Configuration ---
 # For Google Workspace APIs (Calendar, Gmail, Drive)
 SCOPES = [
-    'https://www.googleapis.com/auth/calendar.readonly', 
+    'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/drive.readonly',
-    'https://www.googleapis.com/auth/spreadsheets.readonly', # For reading Google Sheets
-    'https://www.googleapis.com/auth/calendar.events' # For tagging events - RECOMMENDED
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/documents'
 ]
-CREDENTIALS_FILE = 'credentials.json' # Downloaded from GCP
+CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json") # Downloaded from GCP
 TOKEN_FILE_PREFIX = 'token_brandvmeet' # Will generate token_brandvmeet_calendar.json etc.
 
 # For Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Set this environment variable
 
 # Google Drive Folder ID containing NBH data
-NBH_GDRIVE_FOLDER_ID = os.getenv("NBH_GDRIVE_FOLDER_ID", "1rikXDq-ZyuZpUbN-ZLCsmcVJCswIlPDq") # Set env var or replace placeholder
+NBH_GDRIVE_FOLDER_ID = os.getenv("NBH_GDRIVE_FOLDER_ID") # Set env var or replace placeholder
 
-AGENT_EMAIL = "brand.vmeet@nobroker.in" # Email of the agent account
+AGENT_EMAIL = os.getenv("AGENT_EMAIL") # Email of the agent account
 ADMIN_EMAIL_FOR_NOTIFICATIONS = "ajay.saini@nobroker.in" # REPLACE with your actual email
 leadership_emails = ["sristi.agarwal@nobroker.in", "rohit.c@nobroker.in"] # Add the second email
 
@@ -247,7 +258,7 @@ def get_google_service(service_name, version, scopes_list, token_filename_base_f
     creds = None
     # Construct the specific local token filename (e.g., token_brandvmeet_calendar.json)
     # This is used for local development fallback and saving tokens locally.
-    local_token_file_path = f"{token_filename_base_for_local_storage}_{service_name.lower()}.json"
+    local_token_file_path = token_filename_base_for_local_storage
 
     # --- Attempt 1: Load from specific environment variable for the service (for CI) ---
     # Construct the expected environment variable name, e.g., GOOGLE_TOKEN_JSON_CALENDAR
@@ -1695,7 +1706,7 @@ d) Brand persona
 
 e) What the brand is doing these days and the areas where they are focusing more lately
 
-#Recent Marketing history: List all the recent marketing history of the brand be it be campaigns or activities. Analyse the recent marketing campaigns of the brand as if you are a McKinsey or a BCG consultant and give me the analysis on various points, like the cohorting they are focusing on, etc. Don’t make a big report. Keep the points precise  and concise as if you are presenting to a CXO. Keep each point to a max of 2 lines.
+#Recent Marketing history: List all the recent marketing history of the brand be it be campaigns or activities. Analyse the recent marketing campaigns of the brand as if you are a McKinsey or a BCG consultant and give me the analysis on various points, like the cohorting they are focusing on, etc. Don't make a big report. Keep the points precise  and concise as if you are presenting to a CXO. Keep each point to a max of 2 lines.
 
 #Personal History and Persona Analysis: The personal history and persona analysis should be done for all the attendees from the brand side.
 
@@ -1875,6 +1886,113 @@ def send_notification_email(gmail_service, subject, body_html, recipient=ADMIN_E
     )
     send_gmail_message(gmail_service, 'me', email_message)
 
+# Here are some useful functions to update meeting data in the master sheet
+
+def read_data_from_sheets(sheet_id, sheets_service, range):
+
+    try:
+        result = (
+                sheets_service.spreadsheets()
+                .values()
+                .get(spreadsheetId=sheet_id, range=range)
+                .execute()
+            )
+        sheet_data = result.get("values", [])
+        print(f"{len(sheet_data)} rows retrieved")
+        return sheet_data
+    except HttpError as error:
+        print(f"An error occurred: {error}")
+
+# Then check which events have not been updated in the google sheets
+def events_to_update(meeting_ids, events):
+    events_to_update = []
+    for event in events:
+        arr = [event["id"]]
+        if arr not in meeting_ids:
+            events_to_update.append(event)
+    if not events_to_update:
+        print("No new meetings to update")
+        return None
+    else:
+        return events_to_update
+    
+
+def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded_emails):
+    for i, event in enumerate(events_to_update):
+        id = event["id"]
+        title = event["summary"]
+        date = event["start"].get("date", event["start"].get("dateTime"))
+        if 'T' in date:
+            date = datetime.datetime.fromisoformat(date).date().isoformat()
+        attendees = event.get("attendees")
+        if attendees:
+            emails = [attendee["email"] for attendee in attendees]
+            nobroker_attendee = []
+            client_attendee = []
+            
+            for email in emails:
+                if "nobroker" in email:
+                    pseudo_name=False
+                    for name in excluded_emails:
+                        if name in email:
+                            pseudo_name=True
+                            break
+                    if pseudo_name==True:
+                        continue
+                    else:
+                        nobroker_attendee.append(email)
+                else:
+                    client_attendee.append(email)
+            row = [id, title, date, f"{nobroker_attendee}", f"{client_attendee}"]
+            values = [row]
+            
+            body = {
+                'values': values
+            }
+            result = sheets_service.spreadsheets().values().append(
+                spreadsheetId=sheet_id,
+                range="Meeting_data",
+                valueInputOption='RAW',
+                insertDataOption='INSERT_ROWS',
+                body=body
+            ).execute()
+            print(f"Appended row: {title}")
+            if (i+1)%50 == 0:
+                print("Sleep initiated")
+                time.sleep(50)
+
+# Function to create a google document for the brief
+def create_google_doc_in_folder(drive_service, folder_id, doc_name):
+    file_metadata = {
+        'name': doc_name,
+        'mimeType': 'application/vnd.google-apps.document',
+        'parents': [folder_id]
+    }
+    created = drive_service.files().create(
+        body=file_metadata,
+        fields='id, name, parents'
+    ).execute()
+    print(f"Created Google Doc: {created['name']} (ID: {created['id']})")
+    return created['id']
+
+# Function to write content to a Google Doc
+def write_into_doc(docs_service, doc_id, text):
+    requests = [
+        {
+            'insertText': {
+                'location': { 'index': 1 },
+                'text': text
+            }
+        }
+    ]
+    
+    try:
+        docs_service.documents().batchUpdate(
+            documentId=doc_id,
+            body={'requests': requests}
+        ).execute()
+    except:
+        print("An error occured while writing into google doc")
 
 # --- Main Execution Logic ---
 def main():
@@ -1895,12 +2013,19 @@ def main():
     print(f"Script started at {datetime.datetime.now()}")
     print(f"Using NBH GDrive Folder ID: {NBH_GDRIVE_FOLDER_ID}")
 
+    calendar_token = os.getenv("CALENDAR_TOKEN")
+    gmail_token = os.getenv("GMAIL_TOKEN")
+    drive_token = os.getenv("DRIVE_TOKEN")
+    sheets_token = os.getenv("SHEET_TOKEN")
+    docs_token = os.getenv("DOCS_TOKEN")  # Token for Google Docs API
+
     # Initialize Google Services
     # Use a combined token file strategy or separate ones. Separate is fine.
-    calendar_service = get_google_service('calendar', 'v3', SCOPES, f"{TOKEN_FILE_PREFIX}_calendar.json")
-    gmail_service = get_google_service('gmail', 'v1', SCOPES, f"{TOKEN_FILE_PREFIX}_gmail.json")
-    drive_service = get_google_service('drive', 'v3', SCOPES, f"{TOKEN_FILE_PREFIX}_drive.json")
-    sheets_service = get_google_service('sheets', 'v4', SCOPES, f"{TOKEN_FILE_PREFIX}_sheets.json")
+    calendar_service = get_google_service('calendar', 'v3', SCOPES, calendar_token)
+    gmail_service = get_google_service('gmail', 'v1', SCOPES, gmail_token)
+    drive_service = get_google_service('drive', 'v3', SCOPES, drive_token)
+    sheets_service = get_google_service('sheets', 'v4', SCOPES, sheets_token)
+    docs_service = get_google_service('docs', 'v1', SCOPES, docs_token)  # Docs service for creating briefs
     gemini_llm_model = configure_gemini()
 
 
@@ -1910,8 +2035,23 @@ def main():
 
     upcoming_events = get_upcoming_meetings(calendar_service)
     if not upcoming_events:
-        print('No upcoming events found for brand.vmeet@nobroker.in that need processing.')
+        print('No upcoming events found for agent email that need processing.')
         return
+
+    # Updating events in the master sheet
+
+    master_sheet_id = "1xtB1KUAXJ6IKMQab0Sb0NJfQppCKLkUERZ4PMZlNfOw"
+    meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
+
+    events_to_update_list = events_to_update(meeting_ids, upcoming_events)
+
+    if not events_to_update_list:
+        print("No new meetings to update in master sheet.")
+    else:
+        print(f"{len(events_to_update_list)} new meetings found")
+        update_events_in_sheets(master_sheet_id, events_to_update_list, sheets_service, EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP)
+
+    updated_meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
 
     processed_ids_local_file = load_processed_event_ids()
 
@@ -1971,6 +2111,24 @@ def main():
 
         current_brand_name_for_meeting = meeting_data['brand_name']
         target_brand_industry = meeting_data['industry']
+
+        # Updating the brand name and industry in the master sheet
+        index_of_event = updated_meeting_ids.index([event_id]) + 2 # +2 because A1 is header and A2 is first data row
+        print(f"  Updating master sheet for event ID '{event_id}' at row {index_of_event} with brand '{current_brand_name_for_meeting}' and industry '{target_brand_industry}'")
+        update_values = [[current_brand_name_for_meeting, target_brand_industry]]
+        body = {
+            'values': update_values
+        }
+        try:
+            sheets_service.spreadsheets().values().update(
+                spreadsheetId=master_sheet_id,
+                range=f"Meeting_data!F{index_of_event}:G{index_of_event}",
+                valueInputOption='RAW',
+                body=body
+            ).execute()
+            print(f"  Master sheet updated successfully for event ID '{event_id}'.")
+        except HttpError as error:
+            print(f"  Error updating master sheet for event ID '{event_id}': {error}")
         
         print(f"  LLM identified Brand: '{current_brand_name_for_meeting}', Industry: '{target_brand_industry}'")
 
@@ -2142,6 +2300,33 @@ def main():
             tag_event_as_processed(calendar_service, event_id) # Tag only on full success
             set_one_hour_email_reminder(calendar_service, event_id) # Add this call
             save_processed_event_id(event_id)
+            # --- Create Google Doc for the brief ---
+            BRIEF_FOLDER_ID = "1RhhsFq5NGC2QtHPj8FQaU5BfhxJR5R6I"
+            doc_id = create_google_doc_in_folder(
+                drive_service,
+                BRIEF_FOLDER_ID,
+                f"Pre-Meeting Brief - {meeting_data['brand_name']} - {meeting_data['title']}"
+            )
+            if doc_id:
+                write_into_doc(docs_service, doc_id=doc_id, text=generated_brief)
+                # Updating doc link in master sheet
+                index_of_event = updated_meeting_ids.index([event_id]) + 2 # +2 because A1 is header and A2 is first data row
+                update_values = [[f"https://docs.google.com/document/d/{doc_id}"]]
+                body = {
+                    'values': update_values
+                }
+                try:
+                    sheets_service.spreadsheets().values().update(
+                        spreadsheetId=master_sheet_id,
+                        range=f"Meeting_data!H{index_of_event}:H{index_of_event}",
+                        valueInputOption='RAW',
+                        body=body
+                    ).execute()
+                    print(f"  Master sheet updated with Google Doc link for event ID '{event_id}'.")
+                except HttpError as error:
+                    print(f"  Error updating master sheet with Google Doc link for event ID '{event_id}': {error}")
+                print(f"  Google Doc created and content written for '{meeting_data['title']}'.")
+            
         
 
     #print(f"Script finished at {datetime.datetime.now()}")
