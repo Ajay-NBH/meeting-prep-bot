@@ -49,6 +49,7 @@ jobs:
           GOOGLE_TOKEN_JSON_DRIVE: ${{ secrets.GOOGLE_TOKEN_DRIVE_JSON }}
           GOOGLE_TOKEN_JSON_SHEETS: ${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}
           NBH_GDRIVE_FOLDER_ID: ${{ secrets.NBH_GDRIVE_FOLDER_ID}}
+          GOOGLE_TOKEN_JSON_DOCS: ${{ secrets.GOOGLE_TOKEN_DOCS_JSON }}
           # If you used a single combined token secret (e.g., GOOGLE_TOKEN_JSON_COMBINED),
           # then you'd only have that one here, and your Python script would expect that one.
           # For now, assuming separate token secrets as discussed.
