@@ -13,9 +13,14 @@ credentials.json
 token_*.json
 *.pem
 *.key
+*.json
 
 # VS Code
 .vscode/
 
 # macOS
 .DS_Store
+
+#Jupyter Notebooks
+*.ipynb
+*.ipynb_checkpoints
