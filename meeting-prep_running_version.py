@@ -1438,10 +1438,10 @@ def extract_meeting_info(event, agent_email_global, nbh_service_accounts_to_excl
                 nbh_attendees.append({'email': email, 'name': name})
         elif email:
             brand_attendees_info.append({'name': name, 'email': email})
-
-    if not brand_attendees_info:
-        print(f"  Skipping event '{summary}': No external attendees.")
-        return "NO_EXTERNAL_ATTENDEES"
+# Removing this condition so that physical meetings do not get skipped
+    # if not brand_attendees_info:
+    #     print(f"  Skipping event '{summary}': No external attendees.")
+    #     return "NO_EXTERNAL_ATTENDEES"
 
     return {
         'id': event_id,
@@ -2080,12 +2080,12 @@ def main():
             save_processed_event_id(event_id)
             tag_event_as_processed(calendar_service, event_id)
             continue
-        
-        if meeting_data_result == "NO_EXTERNAL_ATTENDEES":
-            print(f"  Event '{event_summary}': No external attendees. No brief needed.")
-            save_processed_event_id(event_id)
-            tag_event_as_processed(calendar_service, event_id)
-            continue
+        # Skipping this condition so that physical meetings can also be processed
+        # if meeting_data_result == "NO_EXTERNAL_ATTENDEES":
+        #     print(f"  Event '{event_summary}': No external attendees. No brief needed.")
+        #     save_processed_event_id(event_id)
+        #     tag_event_as_processed(calendar_service, event_id)
+        #     continue
 
         # Step 4: If we are here, extraction was successful. Assign the result to meeting_data.
         # This is the key fix: assign the dictionary before trying to use it.
