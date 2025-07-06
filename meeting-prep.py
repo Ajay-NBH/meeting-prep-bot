@@ -40,7 +40,7 @@ TOKEN_FILE_PREFIX = 'token_brandvmeet' # Will generate token_brandvmeet_calendar
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Set this environment variable
 
 # Google Drive Folder ID containing NBH data
-NBH_GDRIVE_FOLDER_ID = os.getenv("NBH_GDRIVE_FOLDER_ID", "1rikXDq-ZyuZpUbN-ZLCsmcVJCswIlPDq") # Set env var or replace placeholder
+NBH_GDRIVE_FOLDER_ID = os.getenv("NBH_GDRIVE_FOLDER_ID") # Set env var or replace placeholder
 
 AGENT_EMAIL = "brand.vmeet@nobroker.in" # Email of the agent account
 ADMIN_EMAIL_FOR_NOTIFICATIONS = "ajay.saini@nobroker.in" # REPLACE with your actual email
@@ -948,7 +948,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
 # --- Calendar Processing ---
 def get_upcoming_meetings(calendar_service, calendar_id='primary', time_delta_hours=96): # Process meetings in next 3 days
     now_utc = datetime.datetime.utcnow()
-    time_min_str = now_utc.isoformat() + 'Z'
+    time_min_str = (now_utc - datetime.timedelta(hours=time_delta_hours)).isoformat() + 'Z'
     time_max_str = (now_utc + datetime.timedelta(hours=time_delta_hours)).isoformat() + 'Z'
     
     print(f'Getting events between {time_min_str} and {time_max_str}')
