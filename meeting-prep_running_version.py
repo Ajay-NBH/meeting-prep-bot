@@ -9,6 +9,7 @@ import re
 import markdown 
 import json
 import fitz
+from google import genai
 from google.genai import types
 
 from google.auth.transport.requests import Request
@@ -218,7 +219,7 @@ Now, analyze the following title:
 Title: "{MEETING_TITLE}"
 """
 
-def get_brand_details_from_title_with_llm(gemini_llm_model, meeting_title):
+def get_brand_details_from_title_with_llm(gemini_llm_client, meeting_title):
     """
     Uses a single LLM call to extract brand name and industry from a meeting title.
     Returns a dictionary with the extracted info or defaults if parsing fails.
@@ -227,7 +228,7 @@ def get_brand_details_from_title_with_llm(gemini_llm_model, meeting_title):
         "brand_name": "Unknown Brand",
         "industry": "Unknown"
     }
-    if not gemini_llm_model:
+    if not gemini_llm_client:
         print("  LLM model not available for brand extraction.")
         return default_response
 
@@ -243,7 +244,7 @@ def get_brand_details_from_title_with_llm(gemini_llm_model, meeting_title):
         tools=[grounding_tool]
     )
     try:
-        response = gemini_llm_model.generate_content(contents=prompt, config=config)
+        response = gemini_llm_client.models.generate_content(model="gemini-2.5-flash",contents=prompt, config=config)
         raw_text = response.candidates[0].content.parts[0].text
 
         cleaned_json_str = re.sub(r'```json\s*|\s*```', '', raw_text).strip()
@@ -576,11 +577,11 @@ def get_structured_gdrive_file_data(drive_service, sheets_service, file_id, file
         return f"A general error occurred reading GDrive file {file_name} (ID: {file_id}): {e}" # Returns string
 
 
-def summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, file_content):
+def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, file_content):
     """
     Uses Gemini LLM to summarize the content of a file for inclusion in the meeting brief.
     """
-    if not gemini_llm_model:
+    if not gemini_llm_client:
         return "Error: Gemini model not available for summarization."
 
     prompt = (
@@ -590,7 +591,7 @@ def summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, f
         f"---\n{file_content}\n---"
     )
     try:
-        response = gemini_llm_model.generate_content(prompt)
+        response = gemini_llm_client.models.generate_content(model="gemini-2.5-flash",contents=prompt)
         if response and response.candidates and response.candidates[0].content.parts:
             summary = response.candidates[0].content.parts[0].text.strip()
             return summary
@@ -605,7 +606,7 @@ def summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, f
 
 
 # --- Modify get_internal_nbh_data_for_brand ---
-def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_model, 
+def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_client, 
                                     current_target_brand_name,target_brand_industry,current_meeting_data,EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL):
     # ... (initial checks for services and folder ID remain) ...
     """
@@ -756,8 +757,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
                     not file_data_object.strip() # Empty content
                 )
 
-                if not is_error_or_no_content and gemini_llm_model:
-                     summary_of_pdf_content = summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, file_data_object[:20000])
+                if not is_error_or_no_content and gemini_llm_client:
+                     summary_of_pdf_content = summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, file_data_object[:20000])
                      final_context_parts_for_llm.append(f"## General NBH Pitch Overview (from '{file_name}'):\n{summary_of_pdf_content}\n")
                 elif not is_error_or_no_content: # Has text, but no LLM
                      final_context_parts_for_llm.append(f"## General NBH Pitch Overview (from '{file_name}'):\n{file_data_object[:1000]}...\n(Full content available, LLM summarization skipped)\n")
@@ -1171,8 +1172,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_mo
             # You might want to summarize these too if they are documents
             if "File type" in file_data_object or "Error" in file_data_object or "Could not parse" in file_data_object:
                  final_context_parts_for_llm.append(f"## Note on file '{file_name}':\n{file_data_object}\n")
-            elif gemini_llm_model: # It's some text content
-                 summary = summarize_file_content_with_gemini(gemini_llm_model, file_name, mime_type, file_data_object[:15000])
+            elif gemini_llm_client: # It's some text content
+                 summary = summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, file_data_object[:15000])
                  final_context_parts_for_llm.append(f"## Information from '{file_name}':\n{summary}\n")
             else: # No LLM, just pass truncated raw text
                  final_context_parts_for_llm.append(f"## Information from '{file_name}':\n{file_data_object[:500]}...\n")# --- Other files (not specifically handled) ---
@@ -1479,12 +1480,12 @@ def configure_gemini():
         print("GEMINI_API_KEY environment variable not set. LLM will not function.")
         return None
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
+        client = genai.Client(api_key=GEMINI_API_KEY)
         # Using a specific model version. 1.5 Flash is faster and cheaper for many tasks.
         # For higher quality, consider 'gemini-1.5-pro-latest'.
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        print(f"Gemini model '{model.model_name}' configured successfully.")
-        return model
+        # model = genai.GenerativeModel('gemini-2.5-flash')
+        print(f"Gemini model configured successfully.")
+        return client
     except Exception as e:
         print(f"Error configuring Gemini API: {e}")
         return None
@@ -1731,8 +1732,8 @@ Use crisp, professional language and bullet-point formatting. Cite metrics and d
 
 
 
-def generate_brief_with_gemini(gemini_llm_model, meeting_data, internal_data_summary_str):
-    if not gemini_llm_model:
+def generate_brief_with_gemini(gemini_llm_client, meeting_data, internal_data_summary_str):
+    if not gemini_llm_client:
         return "Error: Gemini model not available."
 
     # ... (Format placeholders as in previous thought: nbh_attendee_names_str, brand_attendees_details_str etc.)
@@ -1773,8 +1774,9 @@ def generate_brief_with_gemini(gemini_llm_model, meeting_data, internal_data_sum
     print(f"  Sending request to Gemini for brand: {meeting_data['brand_name']}...")
     try:
         # Use Google Search grounding by adding tools=[{"tool": "google_search"}]
-        response = gemini_llm_model.generate_content(
-            prompt_filled,
+        response = gemini_llm_client.model.generate_content(
+            model="gemini-2.5-flash",  # Use the latest Gemini model
+            contents=prompt_filled,
             generation_config=generation_config,
             safety_settings=safety_settings,
             config=config,
@@ -2046,7 +2048,7 @@ def main():
     drive_service = get_google_service('drive', 'v3', SCOPES, drive_token)
     sheets_service = get_google_service('sheets', 'v4', SCOPES, sheets_token)
     docs_service = get_google_service('docs', 'v1', SCOPES, docs_token)  # Docs service for creating briefs
-    gemini_llm_model = configure_gemini()
+    gemini_llm_client = configure_gemini()
 
 
     if not calendar_service: # Critical service
@@ -2113,7 +2115,7 @@ def main():
 
         # Step 5: Use the LLM to get the brand name and industry from the raw title
         print(f"  Using LLM to extract brand details from title: '{meeting_data['title']}'")
-        brand_details = get_brand_details_from_title_with_llm(gemini_llm_model, meeting_data['title'])
+        brand_details = get_brand_details_from_title_with_llm(gemini_llm_client, meeting_data['title'])
 
         # Step 6: Handle ambiguous result from the LLM
         if brand_details['brand_name'] == 'Unknown Brand':
@@ -2160,7 +2162,7 @@ def main():
             internal_data_result = get_internal_nbh_data_for_brand(
                 drive_service=drive_service,
                 sheets_service=sheets_service,
-                gemini_llm_model=gemini_llm_model,
+                gemini_llm_client=gemini_llm_client,
                 current_target_brand_name=current_brand_name_for_meeting,
                 target_brand_industry=target_brand_industry,  # <-- Pass the extracted industry
                 current_meeting_data=meeting_data,
@@ -2286,7 +2288,7 @@ def main():
     
 
 
-        if not gemini_llm_model:
+        if not gemini_llm_client:
             print(f"  Skipping brief generation for '{meeting_data['title']}': Gemini LLM not available.")
             # Don't mark as processed yet, maybe LLM will be available next run
             continue
@@ -2299,7 +2301,7 @@ def main():
 
 
         print(f"  Proceeding with brief generation for: {meeting_data['brand_name']}")
-        generated_brief = generate_brief_with_gemini(gemini_llm_model, meeting_data, internal_nbh_data_for_brand_str)
+        generated_brief = generate_brief_with_gemini(gemini_llm_client, meeting_data, internal_nbh_data_for_brand_str)
 
         if "Error:" in generated_brief or not generated_brief.strip(): # Check for errors from LLM
             print(f"  Failed to generate brief for '{meeting_data['title']}': {generated_brief}")
