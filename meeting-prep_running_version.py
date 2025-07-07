@@ -1772,7 +1772,7 @@ def generate_brief_with_gemini(gemini_llm_client, meeting_data, internal_data_su
     print(f"  Sending request to Gemini for brand: {meeting_data['brand_name']}...")
     try:
         # Use Google Search grounding by adding tools=[{"tool": "google_search"}]
-        response = gemini_llm_client.model.generate_content(
+        response = gemini_llm_client.models.generate_content(
             model="gemini-2.5-flash",  # Use the latest Gemini model
             contents=prompt_filled,
             generation_config=generation_config,
