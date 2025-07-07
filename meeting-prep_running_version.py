@@ -1752,22 +1752,40 @@ def generate_brief_with_gemini(gemini_llm_client, meeting_data, internal_data_su
         INTERNAL_NBH_DATA_SUMMARY=internal_data_summary_str
     )
     
-    generation_config = {"temperature": 0.7, "top_p": 0.95, "top_k": 40} # Typical settings
-    safety_settings = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        # ... other safety settings from previous thought block ...
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-    ]
     grounding_tool = types.Tool(
         google_search=types.GoogleSearch()
     )
 
     # Configure generation settings
     config = types.GenerateContentConfig(
-        tools=[grounding_tool]
-    )
+    # sampling parameters (formerly generation_config dict)
+    temperature=0.7,
+    top_p=0.95,
+    top_k=40,
+
+    # safety filters (formerly safety_settings list of dicts)
+    safety_settings=[
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        ),
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        ),
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        ),
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        ),
+    ],
+
+    # tools (formerly a separate config.tools or tools argument)
+    tools=[grounding_tool],
+)
 
     print(f"  Sending request to Gemini for brand: {meeting_data['brand_name']}...")
     try:
@@ -1775,8 +1793,6 @@ def generate_brief_with_gemini(gemini_llm_client, meeting_data, internal_data_su
         response = gemini_llm_client.models.generate_content(
             model="gemini-2.5-flash",  # Use the latest Gemini model
             contents=prompt_filled,
-            generation_config=generation_config,
-            safety_settings=safety_settings,
             config=config,
             # tools=[{"tool": "google_search"}]  # Enable Google Search grounding >> not working on API calls rights now
         )
