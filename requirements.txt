@@ -8,3 +8,4 @@ PyMuPDF
 markdown
 google-generativeai
 dotenv
+google-genai
