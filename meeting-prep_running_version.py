@@ -22,8 +22,6 @@ from googleapiclient.http import MediaIoBaseDownload
 from dotenv import load_dotenv
 
 
-import google.generativeai as genai
-
 # For parsing Office documents if downloaded from Drive
 from pptx import Presentation
 import openpyxl
@@ -2125,7 +2123,7 @@ def main():
             # ambiguous_body_html = f"..."
             # send_notification_email(...)
             save_processed_event_id(event_id)
-            tag_event_as_processed(calendar_service, event_id) # Tag it so we don't retry
+            # tag_event_as_processed(calendar_service, event_id) # Tag it so we don't retry
             continue
 
         # Step 7: Merge the successful LLM results into the main meeting_data dictionary
