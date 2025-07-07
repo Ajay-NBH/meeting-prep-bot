@@ -9,6 +9,7 @@ import re
 import markdown 
 import json
 import fitz
+from google.genai import types
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -231,8 +232,18 @@ def get_brand_details_from_title_with_llm(gemini_llm_model, meeting_title):
         return default_response
 
     prompt = BRAND_EXTRACTION_PROMPT_TEMPLATE.format(MEETING_TITLE=meeting_title)
+
+    # Define the grounding tool
+    grounding_tool = types.Tool(
+        google_search=types.GoogleSearch()
+    )
+
+    # Configure generation settings
+    config = types.GenerateContentConfig(
+        tools=[grounding_tool]
+    )
     try:
-        response = gemini_llm_model.generate_content(prompt)
+        response = gemini_llm_model.generate_content(contents=prompt, config=config)
         raw_text = response.candidates[0].content.parts[0].text
 
         cleaned_json_str = re.sub(r'```json\s*|\s*```', '', raw_text).strip()
@@ -1750,6 +1761,14 @@ def generate_brief_with_gemini(gemini_llm_model, meeting_data, internal_data_sum
         {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     ]
+    grounding_tool = types.Tool(
+        google_search=types.GoogleSearch()
+    )
+
+    # Configure generation settings
+    config = types.GenerateContentConfig(
+        tools=[grounding_tool]
+    )
 
     print(f"  Sending request to Gemini for brand: {meeting_data['brand_name']}...")
     try:
@@ -1758,6 +1777,7 @@ def generate_brief_with_gemini(gemini_llm_model, meeting_data, internal_data_sum
             prompt_filled,
             generation_config=generation_config,
             safety_settings=safety_settings,
+            config=config,
             # tools=[{"tool": "google_search"}]  # Enable Google Search grounding >> not working on API calls rights now
         )
         # print(f"Gemini raw response: {response}") # For debugging
