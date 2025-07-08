@@ -20,7 +20,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 from dotenv import load_dotenv
-
+from pydantic import BaseModel, ValidationError
 
 # For parsing Office documents if downloaded from Drive
 from pptx import Presentation
@@ -167,6 +167,9 @@ def find_common_attendees(attendee_set_1_raw, attendee_set_2_raw):
 
 # --- END OF NEW HELPER FUNCTIONS ---
 
+class Brand_Details(BaseModel):
+    brand_name: str
+    industry:   str
 
 BRAND_EXTRACTION_PROMPT_TEMPLATE = """
 You are an expert administrative assistant responsible for parsing meeting titles to extract key business information.
@@ -259,7 +262,37 @@ def get_brand_details_from_title_with_llm(gemini_llm_client, meeting_title):
             return default_response
 
     except (json.JSONDecodeError, IndexError, AttributeError, Exception) as e:
-        print(f"  Error processing LLM response for title '{meeting_title}': {e}")
+        print(f"⚠️ First pass failed ({e}), retrying with strict JSON schema…")
+
+        # Build a cleanup prompt + strict JSON enforcement (no tools)
+        cleanup_prompt = (
+            "The text below is supposed to be a JSON object matching this schema:\n\n"
+            f"{Brand_Details.schema_json(indent=2)}\n\n"
+            "But it wasn’t valid JSON. Please reformat exactly as JSON (no extra text):\n\n"
+            f"{raw_text}"
+        )
+
+        cleanup_config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=Brand_Details
+        )
+        retry = gemini_llm_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=cleanup_prompt,
+            config=cleanup_config
+        )
+
+        # the SDK will give you a .parsed attribute when you supply response_schema
+        try:
+            parsed: Brand_Details = retry.parsed
+            return parsed.model_dump()   # or parsed.dict()
+        except Exception as e2:
+            print(f"❌ Retry still failed: {e2}")
+            return default_response
+
+    except Exception as e:
+        # anything else
+        print(f"❌ Unexpected error: {e}")
         return default_response
 
 
