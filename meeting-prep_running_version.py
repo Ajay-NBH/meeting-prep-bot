@@ -202,6 +202,9 @@ class Brand_Details(BaseModel):
     brand_name: str
     industry:   Industry
 
+    class Config:
+        use_enum_values = True  # Use enum values instead of names in JSON output
+
 Allowed_Industries = [industry.value for industry in Industry]
 
 BRAND_EXTRACTION_PROMPT_TEMPLATE = """
