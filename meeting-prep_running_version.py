@@ -205,7 +205,7 @@ class Brand_Details(BaseModel):
 Allowed_Industries = [industry.value for industry in Industry]
 
 BRAND_EXTRACTION_PROMPT_TEMPLATE = """
-You are an expert administrative assistant responsible for parsing meeting titles to extract key business information.
+You are an expert administrative assistant working for NoBrokerHood (NBH) responsible for parsing meeting titles of meetings between NBH and different companies to extract key business information about those companies.
 Your task is to analyze the provided meeting title and return a JSON object with two specific keys: "brand_name" and "industry".
 
 Follow these rules precisely:
