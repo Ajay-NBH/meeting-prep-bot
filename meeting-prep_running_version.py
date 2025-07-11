@@ -11,6 +11,7 @@ import json
 import fitz
 from google import genai
 from google.genai import types
+import enum
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -167,9 +168,41 @@ def find_common_attendees(attendee_set_1_raw, attendee_set_2_raw):
 
 # --- END OF NEW HELPER FUNCTIONS ---
 
+class Industry(enum.Enum):
+    FMCG = "FMCG"
+    AUTOMOTIVE_AND_TRANSPORT = "Automotive & Transportation"
+    MEMBERSHIP_AND_LOCAL_SERVICES="Membership & Local Services"
+    MARKETING_ADVERTISING_AND_MEDIA="Marketing, Advertising & Media"
+    APPAREL_AND_FASHION="Apparel & Fashion"
+    FOOD_AND_BEVERAGE="Food & Beverage"
+    HEALTHCARE="Healthcare"
+    FINANCE_AND_FINTECH="Finance & Fintech"
+    BEAUTY_AND_PERSONAL_CARE="Beauty & Personal Care"
+    JEWELLERY="Jewellery"
+    REAL_ESTATE_AND_CONSTRUCTION="Real Estate & Construction"
+    ENERGY_RENEWABLES_AND_MINING="Energy, Renewables & Mining"
+    WELLNESS_AND_FITNESS="Wellness & Fitness"
+    EDUCATION_AND_TRAINING="Education & Training"
+    HOME_GOODS_AND_ELECTRONINCS="Home Goods & Electronics"
+    HOSPITALITY_AND_TRAVEL="Hospitality & Travel"
+    TECHNOLOGY_AND_BUSINESS_SERVICES="Technology & Business Services"
+    E_COMMERCE="E-Commerce"
+    RETAIL="Retail"
+    PETS_AND_PETS_SERVICES="Pets & Pet Services"
+    GAMING="Gaming"
+    LOGISTICS_AND_WAREHOUSING="Logistics & Warehousing"
+    OTHER_UNKNOWN="Other / Unknown"
+    MANUFACTURING_AND_INDUSTRIAL="Manufacturing & Industrial"
+    QUICk_COMMERCE="Quick Commerce"
+    PHARMA = "Pharma"
+    OTT = "OTT"
+
+
 class Brand_Details(BaseModel):
     brand_name: str
-    industry:   str
+    industry:   Industry
+
+Allowed_Industries = [industry.value for industry in Industry]
 
 BRAND_EXTRACTION_PROMPT_TEMPLATE = """
 You are an expert administrative assistant responsible for parsing meeting titles to extract key business information.
@@ -177,10 +210,11 @@ Your task is to analyze the provided meeting title and return a JSON object with
 
 Follow these rules precisely:
 1.  **brand_name**: Identify the primary brand or company being met. If a title follows the pattern 'Parent Company (Brand)', the 'Brand' inside the parentheses is the primary `brand_name`. The parent company should be ignored for this task.
-2.  **industry**: Infer the most likely industry for the primary `brand_name`.
+2.  **industry**: Infer the most likely industry for the primary `brand_name` strictly from **Allowed_Industries** mentioned below.
 3.  If the title is ambiguous or you cannot identify a clear brand, return "Unknown" for both fields.
 4.  Your response MUST be ONLY the JSON object, with no other text or markdown fences.
 
+Allowed_Industries: {Allowed_Industries}
 ---
 Here are some examples:
 
@@ -233,7 +267,7 @@ def get_brand_details_from_title_with_llm(gemini_llm_client, meeting_title):
         print("  LLM model not available for brand extraction.")
         return default_response
 
-    prompt = BRAND_EXTRACTION_PROMPT_TEMPLATE.format(MEETING_TITLE=meeting_title)
+    prompt = BRAND_EXTRACTION_PROMPT_TEMPLATE.format(MEETING_TITLE=meeting_title, Allowed_Industries=Allowed_Industries)
 
     # Define the grounding tool
     grounding_tool = types.Tool(
@@ -2165,7 +2199,7 @@ def main():
         brand_details = get_brand_details_from_title_with_llm(gemini_llm_client, meeting_data['title'])
 
         # Step 6: Handle ambiguous result from the LLM
-        if brand_details['brand_name'] == 'Unknown Brand':
+        if brand_details['brand_name'] == 'Unknown Brand' or brand_details['brand_name'].lower() == 'unknown':
             print(f"  Event '{meeting_data['title']}': Title is ambiguous for brand extraction by LLM.")
             # Your notification logic for ambiguous titles can go here if needed.
             # Example:
