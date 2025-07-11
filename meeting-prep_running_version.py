@@ -2207,6 +2207,23 @@ def main():
             # send_notification_email(...)
             save_processed_event_id(event_id)
             tag_event_as_processed(calendar_service, event_id) # Tag it so we don't retry
+            # Updating the unknown brand name and industry in the master sheet
+            index_of_event = updated_meeting_ids.index([event_id]) + 2 # +2 because A1 is header and A2 is first data row
+            print(f"  Updating master sheet for event ID '{event_id}' at row {index_of_event} with brand 'Unknown")
+            update_values = [[brand_details['brand_name'], brand_details['industry']]]
+            body = {
+            'values': update_values
+            }
+            try:
+                sheets_service.spreadsheets().values().update(
+                    spreadsheetId=master_sheet_id,
+                    range=f"Meeting_data!F{index_of_event}:G{index_of_event}",
+                    valueInputOption='RAW',
+                    body=body
+                ).execute()
+                print(f"  Master sheet updated successfully for event ID '{event_id}'.")
+            except HttpError as error:
+                print(f"  Error updating master sheet for event ID '{event_id}': {error}")
             continue
 
         # Step 7: Merge the successful LLM results into the main meeting_data dictionary
