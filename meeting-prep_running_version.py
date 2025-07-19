@@ -22,6 +22,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
+from data_config import sheet_masters, hierarchy
 
 # For parsing Office documents if downloaded from Drive
 from pptx import Presentation
@@ -198,10 +199,11 @@ class Industry(enum.Enum):
     OTT = "OTT"
 
 
+
 class Brand_Details(BaseModel):
     brand_name: str
     industry:   Industry
-
+    
     class Config:
         use_enum_values = True  # Use enum values instead of names in JSON output
 
@@ -2146,16 +2148,57 @@ def main():
 
     # Updating events in the master sheet
 
+    owner_vise_upcoming_events = {owner: [] for owner in sheet_masters.keys()}
+    for event in upcoming_events:
+        attendees = event.get('attendees', [])
+        if not attendees:
+            continue
+        for attendee in attendees:
+            email = attendee.get('email', '').lower()
+            if email in sheet_masters:
+                owner = email
+                owner_vise_upcoming_events[owner].append(event)
+                break
+            elif email in hierarchy:
+                manager = hierarchy[email]
+                if manager in sheet_masters:
+                    owner = manager
+                    owner_vise_upcoming_events[owner].append(event)
+                    break 
+                elif hierarchy[manager] in sheet_masters:
+                    owner = hierarchy[manager]
+                    owner_vise_upcoming_events[owner].append(event)
+                    break
+                elif hierarchy[hierarchy[manager]] in sheet_masters:
+                    owner = hierarchy[hierarchy[manager]]
+                    owner_vise_upcoming_events[owner].append(event)
+                    break
+
     master_sheet_id = "1xtB1KUAXJ6IKMQab0Sb0NJfQppCKLkUERZ4PMZlNfOw"
     meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
+    alt_meeting_ids = {owner: None for owner in sheet_masters.keys()}
+    for owner, sheet_id in sheet_masters.items():
+        print(f"Checking alternate sheet for {owner}: {sheet_id}")
+        alt_meeting_ids[owner] = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
 
     events_to_update_list = events_to_update(meeting_ids, upcoming_events)
+    alt_events_to_update = {}
+
+    for owner, alt_ids in alt_meeting_ids.items():
+            alt_events_to_update[owner] = events_to_update(alt_ids, owner_vise_upcoming_events[owner])
 
     if not events_to_update_list:
         print("No new meetings to update in master sheet.")
     else:
         print(f"{len(events_to_update_list)} new meetings found")
         update_events_in_sheets(master_sheet_id, events_to_update_list, sheets_service, EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP)
+    
+    for owner, events in alt_events_to_update.items():
+        if not events:
+            print(f"No new meetings to update in alternate sheet for {owner}.")
+        else:
+            print(f"{len(events)} new meetings found for {owner}")
+            update_events_in_sheets(sheet_masters[owner], events, sheets_service, EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP)
 
     updated_meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
 
@@ -2179,6 +2222,30 @@ def main():
 
         # Step 2: Extract basic meeting info (attendees, raw title, etc.)
         meeting_data_result = extract_meeting_info(event_payload, AGENT_EMAIL, NBH_SERVICE_ACCOUNTS_TO_EXCLUDE)
+        alt_sheet_id = ""
+        owner = ""
+        nbh_attendees = meeting_data_result.get('nbh_attendees', [])
+        for email in nbh_attendees:
+            if email in sheet_masters:
+                owner = email
+                alt_sheet_id = sheet_masters[email]
+                print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id},  Hierarchy: {email}")
+                break
+            elif email not in hierarchy:
+                alt_sheet_id = ""
+            elif hierarchy[email] in sheet_masters:
+                owner = hierarchy[email]
+                alt_sheet_id = sheet_masters[hierarchy[email]]
+                print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id}, Hierarchy: {hierarchy[email]} -> {email}")
+                break
+            elif hierarchy[hierarchy[email]] in sheet_masters:
+                owner = hierarchy[hierarchy[email]]
+                alt_sheet_id = sheet_masters[hierarchy[hierarchy[email]]]
+                print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id}, Hierarchy:{hierarchy[hierarchy[email]]} -> {hierarchy[email]} -> {email}")
+                break
+        if alt_sheet_id:
+            print(f"  Fetching Updated Meeting Ids: {alt_sheet_id} for owner: {owner}")
+            alt_updated_meeting_ids = read_data_from_sheets(alt_sheet_id, sheets_service, "Meeting_data!A2:A")
 
         # Step 3: Handle the possible "skip" results from the extraction
         if meeting_data_result is None: # Case where agent is not an attendee
@@ -2227,6 +2294,20 @@ def main():
                 print(f"  Master sheet updated successfully for event ID '{event_id}'.")
             except HttpError as error:
                 print(f"  Error updating master sheet for event ID '{event_id}': {error}")
+            
+            if alt_sheet_id:
+                index_of_event_for_alt = alt_updated_meeting_ids.index([event_id]) + 2 # +2 because A1 is header and A2 is first data ro
+                print(f"  Updating alternate sheet for event ID '{event_id}' at row {index_of_event} with brand 'Unknown'")
+                try:
+                    sheets_service.spreadsheets().values().update(
+                        spreadsheetId=alt_sheet_id,
+                        range=f"Meeting_data!F{index_of_event_for_alt}:G{index_of_event_for_alt}",
+                        valueInputOption='RAW',
+                        body=body
+                    ).execute()
+                    print(f"  Alternate sheet updated successfully for event ID '{event_id}'.")
+                except HttpError as error:
+                    print(f"  Error updating alternate sheet for event ID '{event_id}': {error}")
             continue
 
         # Step 7: Merge the successful LLM results into the main meeting_data dictionary
@@ -2252,6 +2333,24 @@ def main():
             print(f"  Master sheet updated successfully for event ID '{event_id}'.")
         except HttpError as error:
             print(f"  Error updating master sheet for event ID '{event_id}': {error}")
+
+        if alt_sheet_id:
+            index_of_event_for_alt = alt_updated_meeting_ids.index([event_id]) + 2 # +2 because A1 is header and A2 is first data row
+            print(f"  Updating alternate sheet for event ID '{event_id}' at row {index_of_event_for_alt} with brand '{current_brand_name_for_meeting}' and industry '{target_brand_industry}'")
+            update_values_for_alt = [[current_brand_name_for_meeting, target_brand_industry]]
+            body_for_alt = {
+                'values': update_values_for_alt
+            }
+            try:
+                sheets_service.spreadsheets().values().update(
+                    spreadsheetId=alt_sheet_id,
+                    range=f"Meeting_data!F{index_of_event_for_alt}:G{index_of_event_for_alt}",
+                    valueInputOption='RAW',
+                    body=body_for_alt
+                ).execute()
+                print(f"  Alternate sheet updated successfully for event ID '{event_id}'.")
+            except HttpError as error:
+                print(f"  Error updating alternate sheet for event ID '{event_id}': {error}")
         
         print(f"  LLM identified Brand: '{current_brand_name_for_meeting}', Industry: '{target_brand_industry}'")
 
@@ -2448,6 +2547,23 @@ def main():
                     print(f"  Master sheet updated with Google Doc link for event ID '{event_id}'.")
                 except HttpError as error:
                     print(f"  Error updating master sheet with Google Doc link for event ID '{event_id}': {error}")
+                # If we have an alternate sheet, update it too
+                if alt_sheet_id:
+                    index_of_event_for_alt = alt_updated_meeting_ids.index([event_id]) + 2 # +2 because A1 is header and A2 is first data row
+                    update_values_for_alt = [[f"https://docs.google.com/document/d/{doc_id}"]]
+                    body_for_alt = {
+                        'values': update_values_for_alt
+                    }
+                    try:
+                        sheets_service.spreadsheets().values().update(
+                            spreadsheetId=alt_sheet_id,
+                            range=f"Meeting_data!H{index_of_event_for_alt}:H{index_of_event_for_alt}",
+                            valueInputOption='RAW',
+                            body=body_for_alt
+                        ).execute()
+                        print(f"  Alternate sheet updated with Google Doc link for event ID '{event_id}'.")
+                    except HttpError as error:
+                        print(f"  Error updating alternate sheet with Google Doc link for event ID '{event_id}': {error}")
                 print(f"  Google Doc created and content written for '{meeting_data['title']}'.")
             
         
