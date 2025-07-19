@@ -2165,14 +2165,16 @@ def main():
                     owner = manager
                     owner_vise_upcoming_events[owner].append(event)
                     break 
-                elif hierarchy[manager] in sheet_masters:
-                    owner = hierarchy[manager]
-                    owner_vise_upcoming_events[owner].append(event)
-                    break
-                elif hierarchy[hierarchy[manager]] in sheet_masters:
-                    owner = hierarchy[hierarchy[manager]]
-                    owner_vise_upcoming_events[owner].append(event)
-                    break
+                elif manager in hierarchy:
+                    if hierarchy[manager] in sheet_masters:
+                        owner = hierarchy[manager]
+                        owner_vise_upcoming_events[owner].append(event)
+                        break
+                elif hierarchy[manager] in hierarchy:
+                    if hierarchy[hierarchy[manager]] in sheet_masters:
+                        owner = hierarchy[hierarchy[manager]]
+                        owner_vise_upcoming_events[owner].append(event)
+                        break
 
     master_sheet_id = "1xtB1KUAXJ6IKMQab0Sb0NJfQppCKLkUERZ4PMZlNfOw"
     meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
@@ -2231,18 +2233,18 @@ def main():
                 alt_sheet_id = sheet_masters[email]
                 print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id},  Hierarchy: {email}")
                 break
-            elif email not in hierarchy:
-                alt_sheet_id = ""
-            elif hierarchy[email] in sheet_masters:
-                owner = hierarchy[email]
-                alt_sheet_id = sheet_masters[hierarchy[email]]
-                print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id}, Hierarchy: {hierarchy[email]} -> {email}")
-                break
-            elif hierarchy[hierarchy[email]] in sheet_masters:
-                owner = hierarchy[hierarchy[email]]
-                alt_sheet_id = sheet_masters[hierarchy[hierarchy[email]]]
-                print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id}, Hierarchy:{hierarchy[hierarchy[email]]} -> {hierarchy[email]} -> {email}")
-                break
+            elif email in hierarchy:
+                if hierarchy[email] in sheet_masters:
+                    owner = hierarchy[email]
+                    alt_sheet_id = sheet_masters[hierarchy[email]]
+                    print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id}, Hierarchy: {hierarchy[email]} -> {email}")
+                    break
+            elif hierarchy[email] in hierarchy:
+                if hierarchy[hierarchy[email]] in sheet_masters:
+                    owner = hierarchy[hierarchy[email]]
+                    alt_sheet_id = sheet_masters[hierarchy[hierarchy[email]]]
+                    print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id}, Hierarchy:{hierarchy[hierarchy[email]]} -> {hierarchy[email]} -> {email}")
+                    break
         if alt_sheet_id:
             print(f"  Fetching Updated Meeting Ids: {alt_sheet_id} for owner: {owner}")
             alt_updated_meeting_ids = read_data_from_sheets(alt_sheet_id, sheets_service, "Meeting_data!A2:A")
