@@ -2102,6 +2102,21 @@ def write_into_doc(docs_service, doc_id, text):
     except:
         print("An error occured while writing into google doc")
 
+
+def get_sheet_owner_from_email(email):
+    hcy = []
+    if email in sheet_masters:
+        owner = email
+        hcy.append(owner)
+        return owner, hcy
+    if email in hierarchy:
+        manager = hierarchy[email]
+        owner, hcy = get_sheet_owner_from_email(manager)
+        hcy.append(email)
+        return owner, hcy
+    if email not in hierarchy:
+        return None, []
+
 # --- Main Execution Logic ---
 def main():
     """
@@ -2155,26 +2170,11 @@ def main():
             continue
         for attendee in attendees:
             email = attendee.get('email', '').lower()
-            if email in sheet_masters:
-                owner = email
+            owner, hierarchy = get_sheet_owner_from_email(email)
+            if owner and owner in sheet_masters:
                 owner_vise_upcoming_events[owner].append(event)
+                print(f"Event '{event['summary']}' assigned to owner: {owner} (Hierarchy: {' -> '.join(hierarchy)})")
                 break
-            elif email in hierarchy:
-                manager = hierarchy[email]
-                if manager in sheet_masters:
-                    owner = manager
-                    owner_vise_upcoming_events[owner].append(event)
-                    break 
-                elif manager in hierarchy:
-                    if hierarchy[manager] in sheet_masters:
-                        owner = hierarchy[manager]
-                        owner_vise_upcoming_events[owner].append(event)
-                        break
-                elif hierarchy[manager] in hierarchy:
-                    if hierarchy[hierarchy[manager]] in sheet_masters:
-                        owner = hierarchy[hierarchy[manager]]
-                        owner_vise_upcoming_events[owner].append(event)
-                        break
 
     master_sheet_id = "1xtB1KUAXJ6IKMQab0Sb0NJfQppCKLkUERZ4PMZlNfOw"
     meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
@@ -2228,23 +2228,11 @@ def main():
         owner = ""
         nbh_attendees = meeting_data_result.get('nbh_attendees', [])
         for email in nbh_attendees:
-            if email in sheet_masters:
-                owner = email
-                alt_sheet_id = sheet_masters[email]
-                print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id},  Hierarchy: {email}")
+            owner, hierarchy = get_sheet_owner_from_email(email)
+            if owner and owner in sheet_masters:
+                alt_sheet_id = sheet_masters[owner]
+                print(f"  Found owner: {owner} for email: {email}")
                 break
-            elif email in hierarchy:
-                if hierarchy[email] in sheet_masters:
-                    owner = hierarchy[email]
-                    alt_sheet_id = sheet_masters[hierarchy[email]]
-                    print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id}, Hierarchy: {hierarchy[email]} -> {email}")
-                    break
-            elif hierarchy[email] in hierarchy:
-                if hierarchy[hierarchy[email]] in sheet_masters:
-                    owner = hierarchy[hierarchy[email]]
-                    alt_sheet_id = sheet_masters[hierarchy[hierarchy[email]]]
-                    print(f"Owner: {owner}, Alternate sheet id: {alt_sheet_id}, Hierarchy:{hierarchy[hierarchy[email]]} -> {hierarchy[email]} -> {email}")
-                    break
         if alt_sheet_id:
             print(f"  Fetching Updated Meeting Ids: {alt_sheet_id} for owner: {owner}")
             alt_updated_meeting_ids = read_data_from_sheets(alt_sheet_id, sheets_service, "Meeting_data!A2:A")
