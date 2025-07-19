@@ -2184,7 +2184,8 @@ def main():
         alt_meeting_ids[owner] = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
 
     events_to_update_list = events_to_update(meeting_ids, upcoming_events)
-    alt_events_to_update = {}
+    
+    alt_events_to_update = {owner: [] for owner in sheet_masters.keys()}
 
     for owner, alt_ids in alt_meeting_ids.items():
             alt_events_to_update[owner] = events_to_update(alt_ids, owner_vise_upcoming_events[owner])
