@@ -1384,7 +1384,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
 # --- Calendar Processing ---
 def get_upcoming_meetings(calendar_service, calendar_id='primary', time_delta_hours=96): # Process meetings in next 3 days
     now_utc = datetime.datetime.utcnow()
-    time_min_str = (now_utc - datetime.timedelta(hours=24)).isoformat() + 'Z'
+    time_min_str = (now_utc - datetime.timedelta(hours=48)).isoformat() + 'Z'
     time_max_str = (now_utc + datetime.timedelta(hours=time_delta_hours)).isoformat() + 'Z'
     
     print(f'Getting events between {time_min_str} and {time_max_str}')
