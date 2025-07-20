@@ -2184,7 +2184,7 @@ def main():
         alt_meeting_ids[owner] = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
 
     events_to_update_list = events_to_update(meeting_ids, upcoming_events)
-    
+
     alt_events_to_update = {owner: [] for owner in sheet_masters.keys()}
 
     for owner, alt_ids in alt_meeting_ids.items():
@@ -2228,7 +2228,11 @@ def main():
         alt_sheet_id = ""
         owner = ""
         nbh_attendees = meeting_data_result.get('nbh_attendees', [])
-        for email in nbh_attendees:
+        for attendee in nbh_attendees:
+            email = attendee.get('email', '').lower()
+            if not email:
+                continue
+            # Check if the email matches any owner in the sheet_masters
             owner, hierarchy = get_sheet_owner_from_email(email)
             if owner and owner in sheet_masters:
                 alt_sheet_id = sheet_masters[owner]
