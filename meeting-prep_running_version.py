@@ -2270,7 +2270,7 @@ def main():
                 sheets_service.spreadsheets().values().update(
                     spreadsheetId=master_sheet_id,
                     range=f"Meeting_data!F{index_of_event}:G{index_of_event}",
-                    valueInputOption='RAW',
+                    valueInputOption='USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                     body=body
                 ).execute()
                 print(f"  Master sheet updated successfully for event ID '{event_id}'.")
@@ -2282,7 +2282,7 @@ def main():
                     sheets_service.spreadsheets().values().update(
                         spreadsheetId=master_sheet_id,
                         range=f"Meeting_data!AX{index_of_event}:AX{index_of_event}",
-                        valueInputOption='RAW',
+                        valueInputOption='USER_ENTERED',
                         body=body
                     ).execute()
                     print(f"  Owner sheet flag reset for '{event_id}'.")
@@ -2310,7 +2310,7 @@ def main():
             sheets_service.spreadsheets().values().update(
                 spreadsheetId=master_sheet_id,
                 range=f"Meeting_data!F{index_of_event}:G{index_of_event}",
-                valueInputOption='RAW',
+                valueInputOption='USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                 body=body
             ).execute()
             print(f"  Master sheet updated successfully for event ID '{event_id}'.")
@@ -2322,7 +2322,7 @@ def main():
                 sheets_service.spreadsheets().values().update(
                     spreadsheetId=master_sheet_id,
                     range=f"Meeting_data!AX{index_of_event}:AX{index_of_event}",
-                    valueInputOption='RAW',
+                    valueInputOption='USER_ENTERED',
                     body=body
                 ).execute()
                 print(f"  Owner sheet flag reset for event ID '{event_id}'.")
@@ -2522,7 +2522,7 @@ def main():
                     sheets_service.spreadsheets().values().update(
                         spreadsheetId=master_sheet_id,
                         range=f"Meeting_data!H{index_of_event}:H{index_of_event}",
-                        valueInputOption='RAW',
+                        valueInputOption='USER_ENTERED',
                         body=body
                     ).execute()
                     print(f"  Master sheet updated with Google Doc link for event ID '{event_id}'.")
@@ -2534,7 +2534,7 @@ def main():
                         sheets_service.spreadsheets().values().update(
                             spreadsheetId=master_sheet_id,
                             range=f"Meeting_data!AX{index_of_event}:AX{index_of_event}",
-                            valueInputOption='RAW',
+                            valueInputOption='USER_ENTERED',
                             body=body
                         ).execute()
                         print(f"  Owner sheet flag reset for event ID '{event_id}'.")
