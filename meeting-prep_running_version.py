@@ -2064,7 +2064,7 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
             result = sheets_service.spreadsheets().values().append(
                 spreadsheetId=sheet_id,
                 range="Meeting_data",
-                valueInputOption='RAW',
+                valueInputOption='USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                 insertDataOption='INSERT_ROWS',
                 body=body
             ).execute()
@@ -2088,7 +2088,7 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                     sheets_service.spreadsheets().values().update(
                         spreadsheetId=sheet_id,
                         range=f"Meeting_data!AW{sheet_index + i}:AX{sheet_index + i}",  # AW is owner, AX is flag telling data to be copied to owner's sheet
-                        valueInputOption='RAW',
+                        valueInputOption='USER_ENTERED',
                         body=update_body
                     ).execute()
                     print(f"Updated owner and processed status for {title}")
