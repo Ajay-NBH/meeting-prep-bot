@@ -2082,7 +2082,7 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
             # Set the owner in the second last column and "True" value in the last column
             if owner:
                 update_body = {
-                    'values': [[owner, "True"]]
+                    'values': [[owner, "TRUE"]]
                 }
                 try:
                     sheets_service.spreadsheets().values().update(
