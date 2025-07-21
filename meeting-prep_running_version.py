@@ -2082,7 +2082,7 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
             # Set the owner in the second last column and "True" value in the last column
             if owner:
                 update_body = {
-                    'values': [[owner, "True"]]
+                    'values': [[owner, "TRUE"]]
                 }
                 try:
                     sheets_service.spreadsheets().values().update(
@@ -2274,6 +2274,20 @@ def main():
                     body=body
                 ).execute()
                 print(f"  Master sheet updated successfully for event ID '{event_id}'.")
+                try:
+                    print(f" Resetting flag to TRUE for updating owner's sheet for event ID '{event_id}'")
+                    body = {
+                        'values': [["TRUE"]]
+                    }
+                    sheets_service.spreadsheets().values().update(
+                        spreadsheetId=master_sheet_id,
+                        range=f"Meeting_data!AX{index_of_event}:AX{index_of_event}",
+                        valueInputOption='RAW',
+                        body=body
+                    ).execute()
+                    print(f"  Owner sheet flag reset for '{event_id}'.")
+                except HttpError as error:
+                    print(f"  Error updating master sheet for event ID '{event_id}': {error}")
             except HttpError as error:
                 print(f"  Error updating master sheet for event ID '{event_id}': {error}")
             
@@ -2300,6 +2314,21 @@ def main():
                 body=body
             ).execute()
             print(f"  Master sheet updated successfully for event ID '{event_id}'.")
+            try:
+                print(f" Resetting flag to TRUE for updating owner's sheet for event ID '{event_id}'")
+                body = {
+                    'values': [["TRUE"]]
+                }
+                sheets_service.spreadsheets().values().update(
+                    spreadsheetId=master_sheet_id,
+                    range=f"Meeting_data!AX{index_of_event}:AX{index_of_event}",
+                    valueInputOption='RAW',
+                    body=body
+                ).execute()
+                print(f"  Owner sheet flag reset for event ID '{event_id}'.")
+            
+            except HttpError as error:
+                print(f"  Error while resetting flag for '{event_id}': {error}")
         except HttpError as error:
             print(f"  Error updating master sheet for event ID '{event_id}': {error}")
 
@@ -2497,6 +2526,20 @@ def main():
                         body=body
                     ).execute()
                     print(f"  Master sheet updated with Google Doc link for event ID '{event_id}'.")
+                    try:
+                        print(f" Resetting flag to TRUE for updating owner's sheet for event ID '{event_id}'")
+                        body = {
+                            'values': [["TRUE"]]
+                        }
+                        sheets_service.spreadsheets().values().update(
+                            spreadsheetId=master_sheet_id,
+                            range=f"Meeting_data!AX{index_of_event}:AX{index_of_event}",
+                            valueInputOption='RAW',
+                            body=body
+                        ).execute()
+                        print(f"  Owner sheet flag reset for event ID '{event_id}'.")
+                    except HttpError as error:
+                        print(f"  Error while resetting flag for '{event_id}': {error}")
                 except HttpError as error:
                     print(f"  Error updating master sheet with Google Doc link for event ID '{event_id}': {error}")
                 # If we have an alternate sheet, update it too
