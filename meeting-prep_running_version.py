@@ -1560,22 +1560,7 @@ def configure_gemini():
         return client
     except Exception as e:
         print(f"Error configuring Gemini API: {e}")
-        return None
-
-def read_data_from_sheets(sheets_service, sheet_id, range):
-
-    try:
-        result = (
-                sheets_service.spreadsheets()
-                .values()
-                .get(spreadsheetId=sheet_id, range=range)
-                .execute()
-            )
-        sheet_data = result.get("values", [])
-        print(f"{len(sheet_data)} rows retrieved")
-        return sheet_data
-    except HttpError as error:
-        print(f"An error occurred: {error}")    
+        return None  
 
 
 def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, meeting_data, internal_data_summary_str):
