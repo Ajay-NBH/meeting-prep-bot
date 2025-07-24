@@ -1819,13 +1819,24 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
             row = [id, title, date, f"{nobroker_attendee}", f"{client_attendee}"]
             values = [row]
             try:
+                requests = [
+                    {
+                        "appendCells": {
+                            "sheetId": 0,  # Assuming Meeting_data is the first sheet
+                            "rows": values,
+                            "fields": "userEnteredValue"
+                            }
+                            },
+                            {
+                                "appendCells": {
+                                    "sheetId": 1404820187,
+                                    "rows": values,
+                                    "fields": "userEnteredValue"
+                                    }
+                                    }
+                                    ]
                 body = {
-                "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
-                "insertDataOption": 'INSERT_ROWS',
-                "data": [
-                    {"range": "Meeting_data", "values": values},
-                    {"range": "Audit_and_Training", "values": values},
-                    ],
+                    "requests": requests
                 }
                 result = (
                     sheets_service.spreadsheets()
