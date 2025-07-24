@@ -1840,7 +1840,7 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                 }
                 result = (
                     sheets_service.spreadsheets()
-                    .values().batchUpdate(spreadsheetId=sheet_id, body=body)
+                    .batchUpdate(spreadsheetId=sheet_id, body=body)
                     .execute()
                     )
                 print(f"Appended row: {title}")
