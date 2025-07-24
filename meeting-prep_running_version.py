@@ -1818,48 +1818,59 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                     client_attendee.append(email)
             row = [id, title, date, f"{nobroker_attendee}", f"{client_attendee}"]
             values = [row]
-            
-            body = {
-                'values': values
-            }
-            result = sheets_service.spreadsheets().values().append(
-                spreadsheetId=sheet_id,
-                range="Meeting_data",
-                valueInputOption='USER_ENTERED',  # Use USER_ENTERED to allow date formatting
-                insertDataOption='INSERT_ROWS',
-                body=body
-            ).execute()
-            print(f"Appended row: {title}")
-            owner = None
-            hierarchy_chain = []
-            for email in nobroker_attendee:
-                owner, hierarchy_chain = get_sheet_owner_from_email(email)
-                if owner:
-                    print(f"  Owner for {email} is {owner}. Hierarchy chain: {hierarchy_chain}")
-                    break
-            if not owner:
-                print(f"  No owner found for {title}")
-            
-            # Set the owner in the second last column and "True" value in the last column
-            if owner:
-                update_body = {
-                    'values': [[owner, "TRUE"]]
+            try:
+                body = {
+                "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
+                "insertDataOption": 'INSERT_ROWS',
+                "data": [
+                    {"range": "Meeting_data", "values": values},
+                    {"range": "Audit_and_Training", "values": values},
+                    ],
                 }
-                try:
-                    sheets_service.spreadsheets().values().update(
-                        spreadsheetId=sheet_id,
-                        range=f"Meeting_data!AW{sheet_index + i}:AX{sheet_index + i}",  # AW is owner, AX is flag telling data to be copied to owner's sheet
-                        valueInputOption='USER_ENTERED',
-                        body=update_body
-                    ).execute()
-                    print(f"Updated owner and processed status for {title}")
-                except HttpError as error:
-                    print(f"An error occurred while updating owner for {title}: {error}")
-
+                result = (
+                    sheets_service.spreadsheets()
+                    .values().batchUpdate(spreadsheetId=sheet_id, body=body)
+                    .execute()
+                    )
+                print(f"Appended row: {title}")
+                owner = None
+                hierarchy_chain = []
+                for email in nobroker_attendee:
+                    owner, hierarchy_chain = get_sheet_owner_from_email(email)
+                    if owner:
+                        print(f"  Owner for {email} is {owner}. Hierarchy chain: {hierarchy_chain}")
+                        break
+                if not owner:
+                    print(f"  No owner found for {title}")
                 
-            if (i+1)%50 == 0:
-                print("Sleep initiated")
-                time.sleep(50)
+                # Set the owner in the second last column and "True" value in the last column
+                if owner:
+                    values = [[owner, "TRUE"]]
+                    update_body = {
+                        "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
+                        "data": [
+                            {"range": f"Meeting_data!AW{sheet_index + i}:AX{sheet_index + i}", "values": values},
+                            {"range": f"Audit_and_Training!AW{sheet_index + i}:AX{sheet_index + i}", "values": values},
+                            ],
+                        }
+                    try:
+                        resp = (
+                            sheets_service.spreadsheets()
+                            .values()
+                            .batchUpdate(spreadsheetId=sheet_id, body=body)
+                            .execute()
+                            )
+                        print(f"Updated owner and processed status for {title}")
+                    except HttpError as error:
+                        print(f"An error occurred while updating owner for {title}: {error}")
+
+                    
+                if (i+1)%50 == 0:
+                    print("Sleep initiated")
+                    time.sleep(50)
+            except HttpError as error:
+                print(f"An error occurred while updating {title}: {error}")
+                continue
 
 # Function to create a google document for the brief
 def create_google_doc_in_folder(drive_service, folder_id, doc_name):
@@ -2031,27 +2042,36 @@ def main():
             print(f"  Updating master sheet for event ID '{event_id}' at row {index_of_event} with brand 'Unknown")
             update_values = [[brand_details['brand_name'], brand_details['industry']]]
             body = {
-            'values': update_values
+            "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
+            "data": [
+                {"range": f"Meeting_data!F{index_of_event}:G{index_of_event}", "values": update_values},
+                {"range": f"Audit_and_Training!F{index_of_event}:G{index_of_event}", "values": update_values},
+                ],
             }
             try:
-                sheets_service.spreadsheets().values().update(
-                    spreadsheetId=master_sheet_id,
-                    range=f"Meeting_data!F{index_of_event}:G{index_of_event}",
-                    valueInputOption='USER_ENTERED',  # Use USER_ENTERED to allow date formatting
-                    body=body
-                ).execute()
+                resp = (
+                    sheets_service.spreadsheets()
+                    .values()
+                    .batchUpdate(spreadsheetId=master_sheet_id, body=body)
+                    .execute()
+                    )
                 print(f"  Master sheet updated successfully for event ID '{event_id}'.")
                 try:
                     print(f" Resetting flag to TRUE for updating owner's sheet for event ID '{event_id}'")
+                    values = [["TRUE"]]
                     body = {
-                        'values': [["TRUE"]]
-                    }
-                    sheets_service.spreadsheets().values().update(
-                        spreadsheetId=master_sheet_id,
-                        range=f"Meeting_data!AX{index_of_event}:AX{index_of_event}",
-                        valueInputOption='USER_ENTERED',
-                        body=body
-                    ).execute()
+                        "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
+                        "data": [
+                            {"range": f"Meeting_data!AX{index_of_event}:AX{index_of_event}", "values": values},
+                            {"range": f"Audit_and_Training!AX{index_of_event}:AX{index_of_event}", "values": values},
+                            ],
+                            }
+                    resp = (
+                        sheets_service.spreadsheets()
+                        .values()
+                        .batchUpdate(spreadsheetId=master_sheet_id, body=body)
+                        .execute()
+                        )
                     print(f"  Owner sheet flag reset for '{event_id}'.")
                 except HttpError as error:
                     print(f"  Error updating master sheet for event ID '{event_id}': {error}")
@@ -2071,27 +2091,36 @@ def main():
         print(f"  Updating master sheet for event ID '{event_id}' at row {index_of_event} with brand '{current_brand_name_for_meeting}' and industry '{target_brand_industry}'")
         update_values = [[current_brand_name_for_meeting, target_brand_industry]]
         body = {
-            'values': update_values
-        }
+            "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
+            "data": [
+                {"range": f"Meeting_data!F{index_of_event}:G{index_of_event}", "values": update_values},
+                {"range": f"Audit_and_Training!F{index_of_event}:G{index_of_event}", "values": update_values},
+                ],
+            }
         try:
-            sheets_service.spreadsheets().values().update(
-                spreadsheetId=master_sheet_id,
-                range=f"Meeting_data!F{index_of_event}:G{index_of_event}",
-                valueInputOption='USER_ENTERED',  # Use USER_ENTERED to allow date formatting
-                body=body
-            ).execute()
+            resp = (
+                sheets_service.spreadsheets()
+                .values()
+                .batchUpdate(spreadsheetId=master_sheet_id, body=body)
+                .execute()
+                )
             print(f"  Master sheet updated successfully for event ID '{event_id}'.")
             try:
                 print(f" Resetting flag to TRUE for updating owner's sheet for event ID '{event_id}'")
+                values = [["TRUE"]]
                 body = {
-                    'values': [["TRUE"]]
-                }
-                sheets_service.spreadsheets().values().update(
-                    spreadsheetId=master_sheet_id,
-                    range=f"Meeting_data!AX{index_of_event}:AX{index_of_event}",
-                    valueInputOption='USER_ENTERED',
-                    body=body
-                ).execute()
+                    "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
+                    "data": [
+                        {"range": f"Meeting_data!AX{index_of_event}:AX{index_of_event}", "values": values},
+                        {"range": f"Audit_and_Training!AX{index_of_event}:AX{index_of_event}", "values": values},
+                        ],
+                        }
+                resp = (
+                    sheets_service.spreadsheets()
+                    .values()
+                    .batchUpdate(spreadsheetId=master_sheet_id, body=body)
+                    .execute()
+                    )
                 print(f"  Owner sheet flag reset for event ID '{event_id}'.")
             
             except HttpError as error:
@@ -2282,28 +2311,37 @@ def main():
                 # Updating doc link in master sheet
                 index_of_event = updated_meeting_ids.index([event_id]) + 2 # +2 because A1 is header and A2 is first data row
                 update_values = [[f"https://docs.google.com/document/d/{doc_id}"]]
-                body = {
-                    'values': update_values
-                }
                 try:
-                    sheets_service.spreadsheets().values().update(
-                        spreadsheetId=master_sheet_id,
-                        range=f"Meeting_data!H{index_of_event}:H{index_of_event}",
-                        valueInputOption='USER_ENTERED',
-                        body=body
-                    ).execute()
+                    body = {
+                        "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
+                        "data": [
+                            {"range": f"Meeting_data!H{index_of_event}:H{index_of_event}", "values": update_values},
+                            {"range": f"Audit_and_Training!H{index_of_event}:H{index_of_event}", "values": update_values},
+                            ],
+                        }
+                    resp = (
+                        sheets_service.spreadsheets()
+                        .values()
+                        .batchUpdate(spreadsheetId=master_sheet_id, body=body)
+                        .execute()
+                        )
                     print(f"  Master sheet updated with Google Doc link for event ID '{event_id}'.")
                     try:
                         print(f" Resetting flag to TRUE for updating owner's sheet for event ID '{event_id}'")
+                        values = [["TRUE"]]
                         body = {
-                            'values': [["TRUE"]]
-                        }
-                        sheets_service.spreadsheets().values().update(
-                            spreadsheetId=master_sheet_id,
-                            range=f"Meeting_data!AX{index_of_event}:AX{index_of_event}",
-                            valueInputOption='USER_ENTERED',
-                            body=body
-                        ).execute()
+                            "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
+                            "data": [
+                                {"range": f"Meeting_data!AX{index_of_event}:AX{index_of_event}", "values": values},
+                                {"range": f"Audit_and_Training!AX{index_of_event}:AX{index_of_event}", "values": values},
+                                ],
+                                }
+                        resp = (
+                            sheets_service.spreadsheets()
+                            .values()
+                            .batchUpdate(spreadsheetId=master_sheet_id, body=body)
+                            .execute()
+                            )
                         print(f"  Owner sheet flag reset for event ID '{event_id}'.")
                     except HttpError as error:
                         print(f"  Error while resetting flag for '{event_id}': {error}")
