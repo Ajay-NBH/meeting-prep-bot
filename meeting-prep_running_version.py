@@ -1946,8 +1946,8 @@ def main():
     prompts_sheet_id = "1_dKfSF_WkANgSNvFbMTR43By_sK74XKWUr9fTzire5s"
     pre_meeting_brief = "Pre_meeting_brief"
     rng = f"{pre_meeting_brief}!A2:A2"
-    # pre_meeting_brief_prompt = read_data_from_sheets(sheets_service, prompts_sheet_id, rng)
-    # YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI = pre_meeting_brief_prompt[0][0]
+    pre_meeting_brief_prompt = read_data_from_sheets(prompts_sheet_id, sheets_service, rng)
+    YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI = pre_meeting_brief_prompt[0][0]
 
 
     if not calendar_service: # Critical service
