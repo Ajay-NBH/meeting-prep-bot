@@ -1787,9 +1787,56 @@ def events_to_update(meeting_ids, events):
     
 
 def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded_emails):
+
     meeting_ids = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
     last_index = len(meeting_ids) + 1  # Start appending from the next row
     sheet_index = last_index + 1  # Sheet index starts from 1, so
+    def to_rowdata(py_row):
+        """Convert a list like ['Alice', 42] to RowData JSON."""
+        def cell(v):
+            t = "stringValue" if isinstance(v, str) else "numberValue"
+            return {"userEnteredValue": {t: v}}
+        return {"values": [cell(v) for v in py_row]}
+
+    for i, event in enumerate(events_to_update):
+        id = event["id"]
+        title = event["summary"]
+        date = event["start"].get("date", event["start"].get("dateTime"))
+        if 'T' in date:
+            date = datetime.datetime.fromisoformat(date).date().isoformat()
+        attendees = event.get("attendees")
+        if attendees:
+def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded_emails):
+
+    meeting_ids = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
+    last_index = len(meeting_ids) + 1  # Start appending from the next row
+    sheet_index = last_index + 1  # Sheet index starts from 1, so
+    def to_rowdata(py_row):
+        """Convert a list like ['Alice', 42] to RowData JSON."""
+        def cell(v):
+            t = "stringValue" if isinstance(v, str) else "numberValue"
+            return {"userEnteredValue": {t: v}}
+        return {"values": [cell(v) for v in py_row]}
+
+    for i, event in enumerate(events_to_update):
+        id = event["id"]
+        title = event["summary"]
+        date = event["start"].get("date", event["start"].get("dateTime"))
+        if 'T' in date:
+            date = datetime.datetime.fromisoformat(date).date().isoformat()
+        attendees = event.get("attendees")
+        if attendees:
+def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded_emails):
+
+    meeting_ids = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
+    last_index = len(meeting_ids) + 1  # Start appending from the next row
+    sheet_index = last_index + 1  # Sheet index starts from 1, so
+    def to_rowdata(py_row):
+        """Convert a list like ['Alice', 42] to RowData JSON."""
+        def cell(v):
+            t = "stringValue" if isinstance(v, str) else "numberValue"
+            return {"userEnteredValue": {t: v}}
+        return {"values": [cell(v) for v in py_row]}
 
     for i, event in enumerate(events_to_update):
         id = event["id"]
@@ -1817,7 +1864,7 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                 else:
                     client_attendee.append(email)
             row = [id, title, date, f"{nobroker_attendee}", f"{client_attendee}"]
-            values = [row]
+            values = [to_rowdata(row)]
             try:
                 requests = [
                     {
@@ -1868,7 +1915,7 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                         resp = (
                             sheets_service.spreadsheets()
                             .values()
-                            .batchUpdate(spreadsheetId=sheet_id, body=body)
+                            .batchUpdate(spreadsheetId=sheet_id, body=update_body)
                             .execute()
                             )
                         print(f"Updated owner and processed status for {title}")
