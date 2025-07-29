@@ -1867,7 +1867,7 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                     update_body = {
                         "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                         "data": [
-                            {"range": f"Meeting_data!AW{sheet_index + i}:AX{sheet_index + i}", "values": values},
+                            {"range": f"Meeting_data!AG{sheet_index + i}:AH{sheet_index + i}", "values": values},
                             {"range": f"Audit_and_Training!AC{sheet_index + i}:AD{sheet_index + i}", "values": values},
                             ],
                         }
@@ -2080,7 +2080,7 @@ def main():
                     body = {
                         "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                         "data": [
-                            {"range": f"Meeting_data!AX{index_of_event}:AX{index_of_event}", "values": values},
+                            {"range": f"Meeting_data!AH{index_of_event}:AH{index_of_event}", "values": values},
                             {"range": f"Audit_and_Training!AD{index_of_event}:AD{index_of_event}", "values": values},
                             ],
                             }
@@ -2129,7 +2129,7 @@ def main():
                 body = {
                     "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                     "data": [
-                        {"range": f"Meeting_data!AX{index_of_event}:AX{index_of_event}", "values": values},
+                        {"range": f"Meeting_data!AH{index_of_event}:AH{index_of_event}", "values": values},
                         {"range": f"Audit_and_Training!AD{index_of_event}:AD{index_of_event}", "values": values},
                         ],
                         }
@@ -2350,7 +2350,7 @@ def main():
                         body = {
                             "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                             "data": [
-                                {"range": f"Meeting_data!AX{index_of_event}:AX{index_of_event}", "values": values},
+                                {"range": f"Meeting_data!AH{index_of_event}:AH{index_of_event}", "values": values},
                                 {"range": f"Audit_and_Training!AD{index_of_event}:AD{index_of_event}", "values": values},
                                 ],
                                 }
