@@ -23,7 +23,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
-from data_config import sheet_masters, hierarchy
+from data_config import sheet_masters, hierarchy, column_index
 
 # For parsing Office documents if downloaded from Drive
 from pptx import Presentation
@@ -1790,6 +1790,12 @@ def events_to_update(meeting_ids, events):
 def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded_emails, designations):
 
     meeting_ids = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
+    master_sheet_columns = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A1:BZ1")[0]  # Get the header row
+    audit_sheet_columns = read_data_from_sheets(sheet_id, sheets_service, "Audit_and_Training!A1:BZ1")[0]  # Get the header row
+    owner_column_index_master = column_index[str(master_sheet_columns.index("Owner") + 1)]  # Convert to 1-based index
+    owner_update_column_index_master = column_index[str(master_sheet_columns.index("Owner sheet to be updated") + 1)]  # Convert to 1-based index
+    owner_column_index_audit = column_index[str(audit_sheet_columns.index("Owner") + 1)]  # Convert to 1-based index
+    owner_update_column_index_audit = column_index[str(audit_sheet_columns.index("Owner sheet to be updated") + 1)]
     last_index = len(meeting_ids) + 1  # Start appending from the next row
     sheet_index = last_index + 1  # Sheet index starts from 1, so
     def to_rowdata(py_row):
@@ -1868,8 +1874,8 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                     update_body = {
                         "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                         "data": [
-                            {"range": f"Meeting_data!AG{sheet_index + i}:AH{sheet_index + i}", "values": values},
-                            {"range": f"Audit_and_Training!AC{sheet_index + i}:AD{sheet_index + i}", "values": values},
+                            {"range": f"Meeting_data!{owner_column_index_master}{sheet_index + i}:{owner_update_column_index_master}{sheet_index + i}", "values": values},
+                            {"range": f"Audit_and_Training!{owner_column_index_audit}{sheet_index + i}:{owner_update_column_index_audit}{sheet_index + i}", "values": values},
                             ],
                         }
                     try:
@@ -1885,6 +1891,8 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                 # Updating the main participant and designation in the sheet; Main participant is generally the last person in the hierarchy chain. So if a BM is present, it will be the last person in the hierarchy chain. Else if RM is present, it will be the last person in the hierarchy chain. Else if CH is present, it will be the last person in the hierarchy chain.
                 main_participant = []
                 dg = []
+                main_participant_column_index = column_index[str(master_sheet_columns.index("Main participant") + 1)]  # Convert to 1-based index
+                meeting_done_status_column_index = column_index[str(master_sheet_columns.index("Meeting Done") + 1)]  # Convert to 1-based index
                 for p in nobroker_attendee:
                     d = designations.get(p, None)
                     if d:
@@ -1906,7 +1914,7 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                                 main_participant.append(p)
                                 dg.append(d)
                 data = [[f"{main_participant}", f"{dg}", "Not Conducted"]]
-                rng = f"Meeting_data!AI{sheet_index + i}:AK{sheet_index + i}"
+                rng = f"Meeting_data!{main_participant_column_index}{sheet_index + i}:{meeting_done_status_column_index}{sheet_index + i}"
                 values = data
                 body = {
                     'values': values
@@ -2011,6 +2019,14 @@ def main():
         dg = row["Designation New"]
         designations[employee] = dg
 
+    # Fetching column headers for master sheet and audit sheet
+    master_sheet_columns = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A1:BZ1")[0]  # Get the header row
+    audit_sheet_columns = read_data_from_sheets(master_sheet_id, sheets_service, "Audit_and_Training!A1:BZ1")[0]
+    # Create a mapping of column names to their 1-based index
+    global column_index_master
+    global column_index_audit
+    column_index_master = {name: column_index[str(i + 1)] for i, name in enumerate(master_sheet_columns)}
+    column_index_audit = {name: column_index[str(i + 1)] for i, name in enumerate(audit_sheet_columns)}
     
     # Load environment variables
 
@@ -2137,8 +2153,8 @@ def main():
                     body = {
                         "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                         "data": [
-                            {"range": f"Meeting_data!AH{index_of_event}:AH{index_of_event}", "values": values},
-                            {"range": f"Audit_and_Training!AD{index_of_event}:AD{index_of_event}", "values": values},
+                            {"range": f"Meeting_data!{column_index_master["Owner sheet to be updated"]}{index_of_event}:{column_index_master["Owner sheet to be updated"]}{index_of_event}", "values": values},
+                            {"range": f"Audit_and_Training!{column_index_audit["Owner sheet to be updated"]}{index_of_event}:{column_index_audit["Owner sheet to be updated"]}{index_of_event}", "values": values},
                             ],
                             }
                     resp = (
@@ -2186,8 +2202,8 @@ def main():
                 body = {
                     "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                     "data": [
-                        {"range": f"Meeting_data!AH{index_of_event}:AH{index_of_event}", "values": values},
-                        {"range": f"Audit_and_Training!AD{index_of_event}:AD{index_of_event}", "values": values},
+                        {"range": f"Meeting_data!{column_index_master["Owner sheet to be updated"]}{index_of_event}:{column_index_master["Owner sheet to be updated"]}{index_of_event}", "values": values},
+                        {"range": f"Audit_and_Training!{column_index_audit["Owner sheet to be updated"]}{index_of_event}:{column_index_audit["Owner sheet to be updated"]}{index_of_event}", "values": values},
                         ],
                         }
                 resp = (
@@ -2407,8 +2423,8 @@ def main():
                         body = {
                             "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
                             "data": [
-                                {"range": f"Meeting_data!AH{index_of_event}:AH{index_of_event}", "values": values},
-                                {"range": f"Audit_and_Training!AD{index_of_event}:AD{index_of_event}", "values": values},
+                                {"range": f"Meeting_data!{column_index_master["Owner sheet to be updated"]}{index_of_event}:{column_index_master["Owner sheet to be updated"]}{index_of_event}", "values": values},
+                                {"range": f"Audit_and_Training!{column_index_audit["Owner sheet to be updated"]}{index_of_event}:{column_index_audit["Owner sheet to be updated"]}{index_of_event}", "values": values},
                                 ],
                                 }
                         resp = (
