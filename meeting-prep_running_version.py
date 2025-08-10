@@ -1905,8 +1905,8 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                             if d.lower() == 'ch':
                                 main_participant.append(p)
                                 dg.append(d)
-                data = [[f"{main_participant}", f"{dg}"]]
-                rng = f"Meeting_data!AI{sheet_index + i}:AJ{sheet_index + i}"
+                data = [[f"{main_participant}", f"{dg}", "Not Conducted"]]
+                rng = f"Meeting_data!AI{sheet_index + i}:AK{sheet_index + i}"
                 values = data
                 body = {
                     'values': values
