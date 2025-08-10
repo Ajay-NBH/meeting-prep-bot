@@ -12,6 +12,7 @@ import fitz
 from google import genai
 from google.genai import types
 import enum
+import pandas as pd
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -1786,7 +1787,7 @@ def events_to_update(meeting_ids, events):
         return events_to_update
     
 
-def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded_emails):
+def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded_emails, designations):
 
     meeting_ids = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
     last_index = len(meeting_ids) + 1  # Start appending from the next row
@@ -1881,8 +1882,47 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                         print(f"Updated owner and processed status for {title}")
                     except HttpError as error:
                         print(f"An error occurred while updating owner for {title}: {error}")
-
-                    
+                # Updating the main participant and designation in the sheet; Main participant is generally the last person in the hierarchy chain. So if a BM is present, it will be the last person in the hierarchy chain. Else if RM is present, it will be the last person in the hierarchy chain. Else if CH is present, it will be the last person in the hierarchy chain.
+                main_participant = []
+                dg = []
+                for p in nobroker_attendee:
+                    d = designations.get(p, None)
+                    if d:
+                        if d .lower() == 'bm':
+                            main_participant.append(p)
+                            dg.append(d)
+                if not main_participant:
+                    for p in nobroker_attendee:
+                        d = designations.get(p, None)
+                        if d:
+                            if d.lower() == 'rm':
+                                main_participant.append(p)
+                                dg.append(d)
+                if not main_participant:
+                    for p in nobroker_attendee:
+                        d = designations.get(p, None)
+                        if d:
+                            if d.lower() == 'ch':
+                                main_participant.append(p)
+                                dg.append(d)
+                data = [[f"{main_participant}", f"{dg}", "Not Conducted"]]
+                rng = f"Meeting_data!AI{sheet_index + i}:AK{sheet_index + i}"
+                values = data
+                body = {
+                    'values': values
+                }
+                try:
+                    result = sheets_service.spreadsheets().values().update(
+                        spreadsheetId=sheet_id,
+                        range=rng,
+                        valueInputOption='USER_ENTERED',
+                        body=body
+                    ).execute()
+                    print(f"Updated main participant and designation for {title}")
+                except HttpError as error:
+                    print(f"An error occurred while updating main participant for {title}: {error}")
+                
+                # Sleep after every 50 updates to avoid rate limiting                    
                 if (i+1)%50 == 0:
                     print("Sleep initiated")
                     time.sleep(50)
@@ -1957,6 +1997,23 @@ def main():
     print(f"Script started at {datetime.datetime.now()}")
     print(f"Using NBH GDrive Folder ID: {NBH_GDRIVE_FOLDER_ID}")
 
+    # Fetching employees data
+    hcy_sheet_id = '1HxJt35QHF8BB_I8HusPQuiCS5_IpkEm5zoOSu1kwkNw'
+    hcy_data = read_data_from_sheets(sheets_service, hcy_sheet_id, "Sheet4!A:F")
+    df_hcy = pd.DataFrame(hcy_data[1:], columns=hcy_data[0])
+
+    # Constructing designations dictionary
+    # This will map employee emails to their designations
+    designations = {}
+
+    for i, row in df_hcy.iterrows():
+        employee = row["Official Email ID"]
+        dg = row["Designation New"]
+        designations[employee] = dg
+
+    
+    # Load environment variables
+
     calendar_token = os.getenv("CALENDAR_TOKEN")
     gmail_token = os.getenv("GMAIL_TOKEN")
     drive_token = os.getenv("DRIVE_TOKEN")
@@ -1999,7 +2056,7 @@ def main():
         print("No new meetings to update in master sheet.")
     else:
         print(f"{len(events_to_update_list)} new meetings found")
-        update_events_in_sheets(master_sheet_id, events_to_update_list, sheets_service, EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP)
+        update_events_in_sheets(master_sheet_id, events_to_update_list, sheets_service, EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, designations)
     
 
     updated_meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
