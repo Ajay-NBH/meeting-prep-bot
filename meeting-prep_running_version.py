@@ -1891,8 +1891,8 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                 # Updating the main participant and designation in the sheet; Main participant is generally the last person in the hierarchy chain. So if a BM is present, it will be the last person in the hierarchy chain. Else if RM is present, it will be the last person in the hierarchy chain. Else if CH is present, it will be the last person in the hierarchy chain.
                 main_participant = []
                 dg = []
-                main_participant_column_index = column_index[f"{master_sheet_columns.index("Main participant") + 1}"]  # Convert to 1-based index
-                meeting_done_status_column_index = column_index[f"{master_sheet_columns.index("Meeting Done") + 1}"]  # Convert to 1-based index
+                main_participant_column_index = column_index[f"{master_sheet_columns.index('Main participant') + 1}"]  # Convert to 1-based index
+                meeting_done_status_column_index = column_index[f"{master_sheet_columns.index('Meeting Done') + 1}"]  # Convert to 1-based index
                 for p in nobroker_attendee:
                     d = designations.get(p, None)
                     if d:
