@@ -2006,7 +2006,7 @@ def main():
     print(f"Using NBH GDrive Folder ID: {NBH_GDRIVE_FOLDER_ID}")
     
     # Load environment variables
-
+    master_sheet_id = "1xtB1KUAXJ6IKMQab0Sb0NJfQppCKLkUERZ4PMZlNfOw"
     calendar_token = os.getenv("CALENDAR_TOKEN")
     gmail_token = os.getenv("GMAIL_TOKEN")
     drive_token = os.getenv("DRIVE_TOKEN")
@@ -2063,7 +2063,6 @@ def main():
 
     # Updating events in the master sheet
 
-    master_sheet_id = "1xtB1KUAXJ6IKMQab0Sb0NJfQppCKLkUERZ4PMZlNfOw"
     meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
 
     events_to_update_list = events_to_update(meeting_ids, upcoming_events)
