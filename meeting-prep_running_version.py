@@ -2004,6 +2004,23 @@ def main():
     """
     print(f"Script started at {datetime.datetime.now()}")
     print(f"Using NBH GDrive Folder ID: {NBH_GDRIVE_FOLDER_ID}")
+    
+    # Load environment variables
+
+    calendar_token = os.getenv("CALENDAR_TOKEN")
+    gmail_token = os.getenv("GMAIL_TOKEN")
+    drive_token = os.getenv("DRIVE_TOKEN")
+    sheets_token = os.getenv("SHEET_TOKEN")
+    docs_token = os.getenv("DOCS_TOKEN")  # Token for Google Docs API
+
+    # Initialize Google Services
+    # Use a combined token file strategy or separate ones. Separate is fine.
+    calendar_service = get_google_service('calendar', 'v3', SCOPES, calendar_token)
+    gmail_service = get_google_service('gmail', 'v1', SCOPES, gmail_token)
+    drive_service = get_google_service('drive', 'v3', SCOPES, drive_token)
+    sheets_service = get_google_service('sheets', 'v4', SCOPES, sheets_token)
+    docs_service = get_google_service('docs', 'v1', SCOPES, docs_token)  # Docs service for creating briefs
+    gemini_llm_client = configure_gemini()
 
     # Fetching employees data
     hcy_sheet_id = '1HxJt35QHF8BB_I8HusPQuiCS5_IpkEm5zoOSu1kwkNw'
@@ -2027,23 +2044,6 @@ def main():
     global column_index_audit
     column_index_master = {name: column_index[f"{i+1}"] for i, name in enumerate(master_sheet_columns)}
     column_index_audit = {name: column_index[f"{i+1}"] for i, name in enumerate(audit_sheet_columns)}
-    
-    # Load environment variables
-
-    calendar_token = os.getenv("CALENDAR_TOKEN")
-    gmail_token = os.getenv("GMAIL_TOKEN")
-    drive_token = os.getenv("DRIVE_TOKEN")
-    sheets_token = os.getenv("SHEET_TOKEN")
-    docs_token = os.getenv("DOCS_TOKEN")  # Token for Google Docs API
-
-    # Initialize Google Services
-    # Use a combined token file strategy or separate ones. Separate is fine.
-    calendar_service = get_google_service('calendar', 'v3', SCOPES, calendar_token)
-    gmail_service = get_google_service('gmail', 'v1', SCOPES, gmail_token)
-    drive_service = get_google_service('drive', 'v3', SCOPES, drive_token)
-    sheets_service = get_google_service('sheets', 'v4', SCOPES, sheets_token)
-    docs_service = get_google_service('docs', 'v1', SCOPES, docs_token)  # Docs service for creating briefs
-    gemini_llm_client = configure_gemini()
 
     prompts_sheet_id = "1_dKfSF_WkANgSNvFbMTR43By_sK74XKWUr9fTzire5s"
     pre_meeting_brief = "Pre_meeting_brief"
