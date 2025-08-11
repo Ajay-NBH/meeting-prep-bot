@@ -2007,7 +2007,7 @@ def main():
 
     # Fetching employees data
     hcy_sheet_id = '1HxJt35QHF8BB_I8HusPQuiCS5_IpkEm5zoOSu1kwkNw'
-    hcy_data = read_data_from_sheets(sheets_service, hcy_sheet_id, "Sheet4!A:F")
+    hcy_data = read_data_from_sheets(hcy_sheet_id, sheets_service, "Sheet4!A:F")
     df_hcy = pd.DataFrame(hcy_data[1:], columns=hcy_data[0])
 
     # Constructing designations dictionary
@@ -2020,7 +2020,7 @@ def main():
         designations[employee] = dg
 
     # Fetching column headers for master sheet and audit sheet
-    master_sheet_columns = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A1:BZ1")[0]  # Get the header row
+    master_sheet_columns = read_data_from_sheets(master_sheet_id, sheets_service,  "Meeting_data!A1:BZ1")[0]  # Get the header row
     audit_sheet_columns = read_data_from_sheets(master_sheet_id, sheets_service, "Audit_and_Training!A1:BZ1")[0]
     # Create a mapping of column names to their 1-based index
     global column_index_master
