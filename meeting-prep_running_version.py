@@ -1792,9 +1792,9 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
     meeting_ids = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
     master_sheet_columns = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A1:BZ1")[0]  # Get the header row
     audit_sheet_columns = read_data_from_sheets(sheet_id, sheets_service, "Audit_and_Training!A1:BZ1")[0]  # Get the header row
-    owner_column_index_master = column_index[f"{master_sheet_columns.index("Owner") + 1}"]  # Convert to 1-based index
+    owner_column_index_master = column_index[f"{master_sheet_columns.index('Owner') + 1}"]  # Convert to 1-based index
     owner_update_column_index_master = column_index[f"{master_sheet_columns.index('Owner sheet to be updated') + 1}"]  # Convert to 1-based index
-    owner_column_index_audit = column_index[f"{audit_sheet_columns.index("Owner") + 1}"]  # Convert to 1-based index
+    owner_column_index_audit = column_index[f"{audit_sheet_columns.index('Owner') + 1}"]  # Convert to 1-based index
     owner_update_column_index_audit = column_index[f"{audit_sheet_columns.index('Owner sheet to be updated') + 1}"]
     last_index = len(meeting_ids) + 1  # Start appending from the next row
     sheet_index = last_index + 1  # Sheet index starts from 1, so
