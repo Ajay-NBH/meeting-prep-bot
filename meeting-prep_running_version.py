@@ -1792,10 +1792,10 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
     meeting_ids = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
     master_sheet_columns = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A1:BZ1")[0]  # Get the header row
     audit_sheet_columns = read_data_from_sheets(sheet_id, sheets_service, "Audit_and_Training!A1:BZ1")[0]  # Get the header row
-    owner_column_index_master = column_index[str(master_sheet_columns.index("Owner") + 1)]  # Convert to 1-based index
-    owner_update_column_index_master = column_index[str(master_sheet_columns.index("Owner sheet to be updated") + 1)]  # Convert to 1-based index
-    owner_column_index_audit = column_index[str(audit_sheet_columns.index("Owner") + 1)]  # Convert to 1-based index
-    owner_update_column_index_audit = column_index[str(audit_sheet_columns.index("Owner sheet to be updated") + 1)]
+    owner_column_index_master = column_index[f"{master_sheet_columns.index("Owner") + 1}"]  # Convert to 1-based index
+    owner_update_column_index_master = column_index[f"{master_sheet_columns.index("Owner sheet to be updated") + 1}"]  # Convert to 1-based index
+    owner_column_index_audit = column_index[f"{audit_sheet_columns.index("Owner") + 1}"]  # Convert to 1-based index
+    owner_update_column_index_audit = column_index[f"{audit_sheet_columns.index("Owner sheet to be updated") + 1}"]
     last_index = len(meeting_ids) + 1  # Start appending from the next row
     sheet_index = last_index + 1  # Sheet index starts from 1, so
     def to_rowdata(py_row):
@@ -1891,8 +1891,8 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                 # Updating the main participant and designation in the sheet; Main participant is generally the last person in the hierarchy chain. So if a BM is present, it will be the last person in the hierarchy chain. Else if RM is present, it will be the last person in the hierarchy chain. Else if CH is present, it will be the last person in the hierarchy chain.
                 main_participant = []
                 dg = []
-                main_participant_column_index = column_index[str(master_sheet_columns.index("Main participant") + 1)]  # Convert to 1-based index
-                meeting_done_status_column_index = column_index[str(master_sheet_columns.index("Meeting Done") + 1)]  # Convert to 1-based index
+                main_participant_column_index = column_index[f"{master_sheet_columns.index("Main participant") + 1}"]  # Convert to 1-based index
+                meeting_done_status_column_index = column_index[f"{master_sheet_columns.index("Meeting Done") + 1}"]  # Convert to 1-based index
                 for p in nobroker_attendee:
                     d = designations.get(p, None)
                     if d:
@@ -2025,8 +2025,8 @@ def main():
     # Create a mapping of column names to their 1-based index
     global column_index_master
     global column_index_audit
-    column_index_master = {name: column_index[str(i + 1)] for i, name in enumerate(master_sheet_columns)}
-    column_index_audit = {name: column_index[str(i + 1)] for i, name in enumerate(audit_sheet_columns)}
+    column_index_master = {name: column_index[f"{i+1}"] for i, name in enumerate(master_sheet_columns)}
+    column_index_audit = {name: column_index[f"{i+1}"] for i, name in enumerate(audit_sheet_columns)}
     
     # Load environment variables
 
