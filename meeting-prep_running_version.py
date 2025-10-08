@@ -1581,6 +1581,7 @@ def configure_gemini():
         # model = genai.GenerativeModel('gemini-2.5-flash')
         print(f"Gemini model configured successfully.")
         return client
+        return client
     except Exception as e:
         print(f"Error configuring Gemini API: {e}")
         return None  
