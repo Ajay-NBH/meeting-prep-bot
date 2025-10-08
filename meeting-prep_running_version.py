@@ -11,8 +11,6 @@ import json
 import fitz
 from google import genai
 from google.genai import types
-#import google.generativeai as genai
-#import google.generativeai.types as types
 import enum
 import pandas as pd
 
@@ -55,26 +53,6 @@ TOKEN_FILE_PREFIX = 'token_brandvmeet' # Will generate token_brandvmeet_calendar
 
 # For Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Set this environment variable
-    # safety filters (formerly safety_settings list of dicts)
-
-safety_settings = [
-    {
-        "category": "HARM_CATEGORY_HARASSMENT",
-        "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-    },
-    {
-        "category": "HARM_CATEGORY_HATE_SPEECH",
-        "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-    },
-    {
-        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-        "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-    },
-    {
-        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-        "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-    },
-]
 
 # Google Drive Folder ID containing NBH data
 NBH_GDRIVE_FOLDER_ID = os.getenv("NBH_GDRIVE_FOLDER_ID") # Set env var or replace placeholder
@@ -286,66 +264,79 @@ Title: "{MEETING_TITLE}"
 
 def get_brand_details_from_title_with_llm(gemini_llm_client, meeting_title):
     """
-    Uses the latest google-genai SDK to extract brand name and industry.
+    Uses a single LLM call to extract brand name and industry from a meeting title.
     Returns a dictionary with the extracted info or defaults if parsing fails.
     """
-    default_response = {"brand_name": "Unknown Brand", "industry": "Unknown"}
+    default_response = {
+        "brand_name": "Unknown Brand",
+        "industry": "Unknown"
+    }
     if not gemini_llm_client:
-        print("LLM client not available for brand extraction.")
+        print("  LLM model not available for brand extraction.")
         return default_response
 
-    prompt = BRAND_EXTRACTION_PROMPT_TEMPLATE.format(
-        MEETING_TITLE=meeting_title, Allowed_Industries=Allowed_Industries
+    prompt = BRAND_EXTRACTION_PROMPT_TEMPLATE.format(MEETING_TITLE=meeting_title, Allowed_Industries=Allowed_Industries)
+
+    # Define the grounding tool
+    grounding_tool = types.Tool(
+        google_search=types.GoogleSearch()
     )
 
-    raw_text = ""
+    # Configure generation settings
+    config = types.GenerateContentConfig(
+        tools=[grounding_tool]
+    )
     try:
-        # New, correct config using a simple dictionary
-        config = {"tools": [{"google_search": {}}]}
+        response = gemini_llm_client.models.generate_content(model="gemini-2.5-flash",contents=prompt, config=config)
+        raw_text = response.candidates[0].content.parts[0].text
 
-        # Note the new 'contents' format: a list of structured dictionaries
-        response = gemini_llm_client.models.generate_content(
-            model="gemini-flash-latest", # Or a more specific version like "gemini-1.5-flash-001"
-            contents=prompt,
-            config=config
-        )
-        raw_text = response.text
-
-        cleaned_json_str = re.sub(r"```json\s*|\s*```", "", raw_text).strip()
+        cleaned_json_str = re.sub(r'```json\s*|\s*```', '', raw_text).strip()
         data = json.loads(cleaned_json_str)
 
-        validated_data = Brand_Details.model_validate(data)
-        return validated_data.model_dump()
+        # Validate the simplified response structure
+        if "brand_name" in data and "industry" in data:
+            if not data["brand_name"] or data["brand_name"].lower() == 'unknown':
+                print(f"  LLM identified title '{meeting_title}' as ambiguous.")
+                return default_response
+            return data
+        else:
+            print(f"  Error: LLM response for '{meeting_title}' was missing 'brand_name' or 'industry'.")
+            return default_response
 
-    except Exception as e:
-        print(f"⚠️ First pass failed ('{e}'), retrying with strict JSON output…")
+    except (json.JSONDecodeError, IndexError, AttributeError, Exception) as e:
+        print(f"⚠️ First pass failed ({e}), retrying with strict JSON schema…")
 
+        # Build a cleanup prompt + strict JSON enforcement (no tools)
         cleanup_prompt = (
-            "The text below is supposed to be valid JSON but has errors. "
-            "Correct it to perfectly match this schema. "
-            "Respond ONLY with the corrected JSON object, with no extra text or explanations.\n\n"
-            f"SCHEMA:\n{json.dumps(Brand_Details.model_json_schema(), indent=2)}\n\n"
-            f"INVALID TEXT TO FIX:\n{raw_text}\n\n"
-            "CORRECTED JSON:"
+            "The text below is supposed to be a JSON object matching this schema:\n\n"
+            f"{Brand_Details.schema_json(indent=2)}\n\n"
+            "But it wasn’t valid JSON. Please reformat exactly as JSON (no extra text):\n\n"
+            f"{raw_text}"
         )
 
+        cleanup_config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=Brand_Details
+        )
+        retry = gemini_llm_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=cleanup_prompt,
+            config=cleanup_config
+        )
+
+        # the SDK will give you a .parsed attribute when you supply response_schema
         try:
-            # The config for the retry forces a JSON response type
-            retry_config = {"generation_config": {"response_mime_type": "application/json"}}
-
-            retry_response = gemini_llm_client.models.generate_content(
-                model="gemini-1.5-flash-latest",
-                contents=[{"role": "user", "parts": [cleanup_prompt]}],
-                config=retry_config,
-            )
-
-            validated_data = Brand_Details.model_validate_json(retry_response.text)
-            return validated_data.model_dump()
-
+            parsed: Brand_Details = retry.parsed
+            return parsed.model_dump()   # or parsed.dict()
         except Exception as e2:
-            print(f"❌ JSON retry still failed: {e2}")
+            print(f"❌ Retry still failed: {e2}")
             return default_response
-        
+
+    except Exception as e:
+        # anything else
+        print(f"❌ Unexpected error: {e}")
+        return default_response
+
 
 # --- Google Authentication and Service Building ---
 def get_google_service(service_name, version, scopes_list, token_filename_base_for_local_storage): # Changed last param name for clarity
@@ -672,19 +663,8 @@ def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, 
         "Do not include generic statements. If the content is not relevant, say 'No relevant content found.'\n\n"
         f"---\n{file_content}\n---"
     )
-
-    # ✅ CORRECTED: Define the grounding tool as a Tool object
-    #grounding_tool = genai.Tool(google_search_retrieval={})
-
     try:
-        # New, correct config using a simple dictionary for grounding
-        config = {"tools": [{"google_search": {}}]}
-        response = gemini_llm_client.models.generate_content(
-            model="gemini-flash-latest",            
-            contents=prompt,
-           #tools=[grounding_tool]         
-            config=config
-        )
+        response = gemini_llm_client.models.generate_content(model="gemini-2.5-flash",contents=prompt)
         if response and response.candidates and response.candidates[0].content.parts:
             summary = response.candidates[0].content.parts[0].text.strip()
             return summary
@@ -1573,14 +1553,11 @@ def configure_gemini():
         print("GEMINI_API_KEY environment variable not set. LLM will not function.")
         return None
     try:
-        #genai.configure(api_key=GEMINI_API_KEY)
-        #model = genai.GenerativeModel(model_name='gemini-flash-latest',safety_settings=safety_settings)  # or 'gemini-1.5-pro-latest'
         client = genai.Client(api_key=GEMINI_API_KEY)
         # Using a specific model version. 1.5 Flash is faster and cheaper for many tasks.
         # For higher quality, consider 'gemini-1.5-pro-latest'.
         # model = genai.GenerativeModel('gemini-2.5-flash')
         print(f"Gemini model configured successfully.")
-        return client
         return client
     except Exception as e:
         print(f"Error configuring Gemini API: {e}")
@@ -1608,25 +1585,50 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
         BRAND_ATTENDEES_FULL_DETAILS=brand_attendees_info_str,
         INTERNAL_NBH_DATA_SUMMARY=internal_data_summary_str
     )
+    
+    grounding_tool = types.Tool(
+        google_search=types.GoogleSearch()
+    )
 
-    # New, correct config combining all settings into one dictionary
-    config = {
-        "tools": [{"google_search": {}}],
-        "temperature": 0.7,
-        "top_p": 0.95,
-        "top_k": 40,
-        "safety_settings": safety_settings # Your global safety_settings list
-    }
+    # Configure generation settings
+    config = types.GenerateContentConfig(
+    # sampling parameters (formerly generation_config dict)
+    temperature=0.7,
+    top_p=0.95,
+    top_k=40,
+
+    # safety filters (formerly safety_settings list of dicts)
+    safety_settings=[
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        ),
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        ),
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        ),
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        ),
+    ],
+
+    # tools (formerly a separate config.tools or tools argument)
+    tools=[grounding_tool],
+)
 
     print(f"  Sending request to Gemini for brand: {meeting_data['brand_name']}...")
     try:
         # Use Google Search grounding by adding tools=[{"tool": "google_search"}]
         response = gemini_llm_client.models.generate_content(
-            model = 'gemini-flash-latest', # or 'gemini-2.5-flash' for cheaper/faster but lower quality
+            model="gemini-2.5-flash",  # Use the latest Gemini model
             contents=prompt_filled,
-            config=config
-            #safety_settings=safety_settings,            
-            #tools=[grounding_tool]  # Enable Google Search grounding >> not working on API calls rights now
+            config=config,
+            # tools=[{"tool": "google_search"}]  # Enable Google Search grounding >> not working on API calls rights now
         )
         # print(f"Gemini raw response: {response}") # For debugging
         if response.prompt_feedback and response.prompt_feedback.block_reason:
