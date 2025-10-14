@@ -82,7 +82,7 @@ FILE_NAME_CASE_STUDIES_PDF = "National_Campaigns_case_studies.pdf" # New or alte
 FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET = "Physical_campaigns_live_sheet" # From your image
 FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET = "Digital_Campaigns_live_sheet" # From your image (note "live sheet")
 FILE_NAME_COM_DATA_GSHEET = "NoBroker_Overall_Data" # From your image
-FILE_NAME_NBH_PREVIOUS_MEETINGS_GSHEET = "NBH_Previous_meetings"
+FILE_NAME_NBH_PREVIOUS_MEETINGS_GSHEET = "NBH_previous_meetings_updated"
 
 
 def parse_names_from_cell_helper(cell_value_str):
@@ -1045,8 +1045,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 # Let's assume a few key ones for matching:
                 HEADER_PREV_BRAND_NAME = "brand name"
                 HEADER_PREV_MEETING_DATE = "meeting date" # For sorting
-                HEADER_PREV_CLIENT_PARTICIPANTS_NAMES = "client participants" # Column with client names
-                HEADER_PREV_NBH_PARTICIPANTS_NAMES = "nbh participants"       # Column with NBH names
+                HEADER_PREV_CLIENT_PARTICIPANTS_NAMES = "client attendees" # Column with client names
+                HEADER_PREV_NBH_PARTICIPANTS_NAMES = "nobroker attendees"       # Column with NBH names
                 HEADER_PREV_KEY_DISCUSSION = "key discussion points"
                 HEADER_PREV_ACTION_ITEMS = "action items"
                 #HEADER_PREV_IS_FOLLOW_UP_TAG = "is follow up?" # A column you might add to explicitly tag follow-ups
