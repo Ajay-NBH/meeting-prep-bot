@@ -588,7 +588,7 @@ def get_structured_gdrive_file_data(drive_service, sheets_service, file_id, file
                     for sheet_meta in spreadsheet.get('sheets', []):
                         sheet_title = sheet_meta['properties']['title']
                         # Read a significant number of rows, e.g., 1000, and all columns up to ZZ
-                        range_str = f"'{sheet_title}'!A1:ZZ5000" 
+                        range_str = f"'{sheet_title}'!A1:AZ5000" 
                         result = sheets_service.spreadsheets().values().get(
                             spreadsheetId=file_id, range=range_str
                         ).execute()
