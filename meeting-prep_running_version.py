@@ -311,6 +311,7 @@ def get_brand_details_from_title_with_llm(gemini_llm_client, meeting_title):
         tools=[grounding_tool]
     )
     try:
+        raw_text = "" # <-- ADD THIS LINE
         response = gemini_llm_client.models.generate_content(model="gemini-2.5-flash",contents=prompt, config=config)
         raw_text = response.candidates[0].content.parts[0].text
 
