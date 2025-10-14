@@ -333,7 +333,7 @@ def get_brand_details_from_title_with_llm(gemini_llm_client, meeting_title):
         # Build a cleanup prompt + strict JSON enforcement (no tools)
         cleanup_prompt = (
             "The text below is supposed to be a JSON object matching this schema:\n\n"
-            f"{Brand_Details.schema_json(indent=2)}\n\n"
+            f"{json.dumps(Brand_Details.model_json_schema(), indent=2)}\n\n"
             "But it wasn’t valid JSON. Please reformat exactly as JSON (no extra text):\n\n"
             f"{raw_text}"
         )
