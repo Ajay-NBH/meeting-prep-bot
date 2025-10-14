@@ -86,27 +86,51 @@ FILE_NAME_NBH_PREVIOUS_MEETINGS_GSHEET = "NBH_previous_meetings_updated"
 
 
 def parse_names_from_cell_helper(cell_value_str):
+    """
+    Intelligently parses a string from a spreadsheet cell to extract a set of cleaned, lowercase names.
+    Handles two primary formats:
+    1. A string representation of a list (e.g., "['name1@example.com', 'name2']").
+    2. A simple delimited string (e.g., "Name One, Name Two & Name Three").
+    """
     names = set()
     if not cell_value_str or str(cell_value_str).strip().lower() == 'n/a':
         return names
-    
-    cell_value_str = str(cell_value_str) # Ensure it's a string
-    # Remove content in parentheses (e.g., "(NoBrokerHood)", "(Brand Representative)")
-    cleaned_cell = re.sub(r'\s*\([^)]*\)', '', cell_value_str)
-    cleaned_cell = cleaned_cell.replace('*', '').strip() # Remove asterisks and leading/trailing spaces
 
-    # Split by common delimiters. \s* around delimiters handles spaces.
-    potential_names = re.split(r'\s*[,;/&\n]\s*|\s+\band\b\s+|\s+\bwith\b\s+', cleaned_cell)
-    
+    # Ensure we are working with a string and clean it up
+    cell_value_str = str(cell_value_str).strip()
+    potential_names = []
+
+    # --- NEW LOGIC: Check if the string is formatted like a list ---
+    if cell_value_str.startswith('[') and cell_value_str.endswith(']'):
+        # Use regex to find all content within single or double quotes
+        # This is safer than using eval()
+        extracted_items = re.findall(r"[\'\"](.*?)[\'\"]", cell_value_str)
+        for item in extracted_items:
+            # If the item is an email, just take the part before the @
+            if '@' in item:
+                potential_names.append(item.split('@')[0])
+            else:
+                potential_names.append(item)
+    else:
+        # --- FALLBACK LOGIC: Handle simple, delimited strings ---
+        # Remove content in parentheses (e.g., "(NoBrokerHood)")
+        cleaned_cell = re.sub(r'\s*\([^)]*\)', '', cell_value_str)
+        cleaned_cell = cleaned_cell.replace('*', '').strip() # Remove asterisks
+
+        # Split by common delimiters
+        potential_names = re.split(r'\s*[,;/&\n]\s*|\s+\band\b\s+|\s+\bwith\b\s+', cleaned_cell)
+
+    # --- Common cleaning process for all extracted name parts ---
     for name_part in potential_names:
         final_name = name_part.strip().lower()
-        # Filter for meaningful names (e.g., length > 2) and exclude common role descriptors
+        # Filter for meaningful names and exclude common role descriptors
         if final_name and len(final_name) > 2 and \
            "nbh sales" not in final_name and \
            "brand representative" not in final_name and \
            "nobrokerhood" not in final_name and \
-           "stay vista" not in final_name: # Example: add other generic terms to exclude
+           "stay vista" not in final_name:
             names.add(final_name)
+            
     return names
 
 # --- ADD THESE NEW HELPER FUNCTIONS NEAR THE TOP OF YOUR SCRIPT ---
