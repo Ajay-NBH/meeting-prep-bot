@@ -1832,7 +1832,8 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
 
     for i, event in enumerate(events_to_update):
         id = event["id"]
-        title = event["summary"]
+        # Safely get the event title. If it doesn't exist, use "Untitled Meeting".
+        title = event.get("summary", "Untitled Meeting")
         date = event["start"].get("date", event["start"].get("dateTime"))
         if 'T' in date:
             date = datetime.datetime.fromisoformat(date).date().isoformat()
