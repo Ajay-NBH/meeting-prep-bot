@@ -1406,9 +1406,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
             previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}':\n")
 
         if direct_follow_up_meetings:
-```
-
----
 
 ##  **TEST YOUR FIX**
 
