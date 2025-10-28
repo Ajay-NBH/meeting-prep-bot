@@ -1391,59 +1391,10 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         is_overall_direct_follow_up = bool(direct_follow_up_meetings)
         has_other_past_interactions = bool(other_past_meetings)
 
-        # --- STEP 3: Build the sophisticated context for the LLM brief ---
-       
-        #  CRITICAL: Only add previous meeting section if there are actual previous meetings
-        if not direct_follow_up_meetings and not other_past_meetings:
-            # This is a FRESH meeting - no previous context to add
-            previous_meeting_notes_for_llm_list.append(
-                f"## Previous NBH Meetings with '{current_target_brand_name}':\n"
-                f"**This is a FRESH/NEW meeting.** No previous meeting records found for this brand before {current_meeting_date_only}.\n"
-                f"This is NOT a follow-up meeting.\n"
-            )
-        else:
-            # This is a follow-up - add previous meeting context
-            previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}':\n")
+# --- STEP 3: Build the sophisticated context for the LLM brief ---
+        previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}':\n")
 
         if direct_follow_up_meetings:
-
-##  **TEST YOUR FIX**
-
-After making these changes, run your script. You should see:
-
-### **For a FRESH meeting (no previous meetings):**
-```
- Current meeting date: 2025-10-24
- Found 1 meetings for this brand
- Kept 0 meetings (BEFORE 2025-10-24)
- Filtered 1 meetings (same day or future)
- This is a FRESH MEETING (no previous meetings found)
-```
-
-**Gemini will receive:**
-```
-## Previous NBH Meetings with 'Brand X':
-**This is a FRESH/NEW meeting.** No previous meeting records found for this brand before 2025-10-24.
-This is NOT a follow-up meeting.
-```
-
-### **For a FOLLOW-UP meeting (has previous meetings):**
-```
- Current meeting date: 2025-10-24
- Found 3 meetings for this brand
- Kept 2 meetings (BEFORE 2025-10-24)
- Filtered 1 meetings (same day or future)
- This appears to be a FOLLOW-UP (analyzing 2 previous meetings)
- Processing previous meeting from 2025-10-22
- Processing previous meeting from 2025-10-20
-```
-
-**Gemini will receive:**
-```
-## Insights from Previous NBH Meetings with 'Brand X':
-**Previous Meeting on 2025-10-22:**
-- Key Discussion: Pricing discussion
-- Action Items: Send proposal
             previous_meeting_notes_for_llm_list.append(
                 "### Actionable Follow-Up Items (from meetings with attendee overlap):\n"
                 "This upcoming meeting appears to be a DIRECT FOLLOW-UP to the specific meetings listed below. The brief should heavily focus on continuity, previous discussions, and action items from these engagements.\n\n"
