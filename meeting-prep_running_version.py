@@ -733,6 +733,20 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
     
     print(f"  Target Brand: '{current_target_brand_name}', Inferred Industry: '{target_brand_industry}'")
 
+    # ========== FIX #1: Extract current meeting date ==========
+    current_meeting_date = current_meeting_data.get('start_time_obj')
+    if not current_meeting_date:
+        print(" WARNING: Current meeting has no valid start_time_obj.")
+        current_meeting_date = datetime.datetime.max
+   
+    if isinstance(current_meeting_date, datetime.datetime):
+        current_meeting_date_only = current_meeting_date.date()
+    else:
+        current_meeting_date_only = current_meeting_date
+   
+    print(f"   Current meeting date for follow-up check: {current_meeting_date_only}")
+    # ========== END FIX #1 ==========
+
     # Get clean names from current meeting data
     #def get_clean_names_from_attendee_list(attendee_list_param):
     #    names = set()
@@ -1303,15 +1317,47 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         # Sort the entire collection of meetings by date, descending.
         matching_previous_meetings_details_accumulator.sort(key=lambda x: x.get("date_obj", datetime.date.min), reverse=True)
 
-        # Set the number of recent meetings to analyze
-        MAX_PREVIOUS_MEETINGS_TO_ANALYZE = 5
-        latest_meetings_to_analyze = matching_previous_meetings_details_accumulator[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]
+        #  CRITICAL FIX: Get current meeting date from meeting_data
+        current_meeting_date_obj = current_meeting_data.get('start_time_obj')
+        if isinstance(current_meeting_date_obj, datetime.datetime):
+            current_meeting_date_only = current_meeting_date_obj.date()
+        else:
+            current_meeting_date_only = datetime.date.today()
+       
+        print(f"   Current meeting date: {current_meeting_date_only}")
+       
+        #  CRITICAL FIX: Remove meetings on or after current date
+        truly_previous_meetings = [
+            mtg for mtg in matching_previous_meetings_details_accumulator
+            if mtg.get("date_obj", datetime.date.min) < current_meeting_date_only
+        ]
+       
+        print(f"   Found {len(matching_previous_meetings_details_accumulator)} meetings for this brand")
+        print(f"   Kept {len(truly_previous_meetings)} meetings (BEFORE {current_meeting_date_only})")
+        print(f"   Filtered {len(matching_previous_meetings_details_accumulator) - len(truly_previous_meetings)} meetings (same day or future)")
+       
+        if not truly_previous_meetings:
+            print(f"   This is a FRESH MEETING (no previous meetings found)")
+            # Don't process any previous meetings - this is a NEW client engagement
+            latest_meetings_to_analyze = []
+        else:
+            # Set the number of recent meetings to analyze
+            MAX_PREVIOUS_MEETINGS_TO_ANALYZE = 5
+            latest_meetings_to_analyze = truly_previous_meetings[:MAX_PREVIOUS_MEETINGS_TO_ANALYZE]
+            print(f"   This appears to be a FOLLOW-UP (analyzing {len(latest_meetings_to_analyze)} previous meetings)")
 
 
 
 
         # --- STEP 1: Populate full details and determine follow-up status for each recent meeting ---
         for mtg_data in latest_meetings_to_analyze:
+            #  SAFETY CHECK: Double-verify this meeting is actually before current date
+            mtg_date = mtg_data.get("date_obj", datetime.date.min)
+            if mtg_date >= current_meeting_date_only:
+                print(f"   BUG DETECTED: Meeting on {mtg_date} should have been filtered! Skipping it.")
+                continue  # Skip this meeting
+           
+            print(f"  ✓ Processing previous meeting from {mtg_date}")
             row_info = mtg_data['original_row_info']
             row_values = row_info['values']
 
@@ -1346,9 +1392,61 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         has_other_past_interactions = bool(other_past_meetings)
 
         # --- STEP 3: Build the sophisticated context for the LLM brief ---
-        previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}':\n")
+       
+        #  CRITICAL: Only add previous meeting section if there are actual previous meetings
+        if not direct_follow_up_meetings and not other_past_meetings:
+            # This is a FRESH meeting - no previous context to add
+            previous_meeting_notes_for_llm_list.append(
+                f"## Previous NBH Meetings with '{current_target_brand_name}':\n"
+                f"**This is a FRESH/NEW meeting.** No previous meeting records found for this brand before {current_meeting_date_only}.\n"
+                f"This is NOT a follow-up meeting.\n"
+            )
+        else:
+            # This is a follow-up - add previous meeting context
+            previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}':\n")
 
         if direct_follow_up_meetings:
+```
+
+---
+
+##  **TEST YOUR FIX**
+
+After making these changes, run your script. You should see:
+
+### **For a FRESH meeting (no previous meetings):**
+```
+ Current meeting date: 2025-10-24
+ Found 1 meetings for this brand
+ Kept 0 meetings (BEFORE 2025-10-24)
+ Filtered 1 meetings (same day or future)
+ This is a FRESH MEETING (no previous meetings found)
+```
+
+**Gemini will receive:**
+```
+## Previous NBH Meetings with 'Brand X':
+**This is a FRESH/NEW meeting.** No previous meeting records found for this brand before 2025-10-24.
+This is NOT a follow-up meeting.
+```
+
+### **For a FOLLOW-UP meeting (has previous meetings):**
+```
+ Current meeting date: 2025-10-24
+ Found 3 meetings for this brand
+ Kept 2 meetings (BEFORE 2025-10-24)
+ Filtered 1 meetings (same day or future)
+ This appears to be a FOLLOW-UP (analyzing 2 previous meetings)
+ Processing previous meeting from 2025-10-22
+ Processing previous meeting from 2025-10-20
+```
+
+**Gemini will receive:**
+```
+## Insights from Previous NBH Meetings with 'Brand X':
+**Previous Meeting on 2025-10-22:**
+- Key Discussion: Pricing discussion
+- Action Items: Send proposal
             previous_meeting_notes_for_llm_list.append(
                 "### Actionable Follow-Up Items (from meetings with attendee overlap):\n"
                 "This upcoming meeting appears to be a DIRECT FOLLOW-UP to the specific meetings listed below. The brief should heavily focus on continuity, previous discussions, and action items from these engagements.\n\n"
