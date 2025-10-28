@@ -29,10 +29,12 @@ jobs:
       #     restore-keys: |
       #       ${{ runner.os }}-processed-events-
 
-      - name: Install dependencies
+      - name: Install dependencies (force fresh install)
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install --no-cache-dir -r requirements.txt
+
+
 
       - name: Create credentials.json and Run Meeting Prep Script
         env:
