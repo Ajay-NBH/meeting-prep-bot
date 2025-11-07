@@ -174,23 +174,34 @@ def find_common_attendees(attendee_set_1_raw, attendee_set_2_raw):
     matched_indices_in_set_2 = set()
 
     for i, norm_set_1 in enumerate(normalized_attendees_1):
-        if not norm_set_1:  # Skip empty normalized names
+        if not norm_set_1:
             continue
         
         for j, norm_set_2 in enumerate(normalized_attendees_2):
-            if j in matched_indices_in_set_2:
-                continue # This person from set 2 is already matched
-            if not norm_set_2:
+            if j in matched_indices_in_set_2 or not norm_set_2:
                 continue
 
-            # THE CORE LOGIC: Check for equality or if one is a subset of the other.
-            # This handles cases like {'shubham', 'chandrakant'} being a subset of {'shubham', 'chandrakant', 'dakhane'}
-            if norm_set_1.issubset(norm_set_2) or norm_set_2.issubset(norm_set_1):
-                # We have a match!
-                # Add the original raw name from the first set to our list of common attendees
+            # --- NEW, MORE ROBUST CORE LOGIC ---
+            # A match occurs if:
+            # 1. The name sets are identical (e.g., {'john', 'doe'} == {'john', 'doe'}).
+            # 2. One set is a complete subset of the other (e.g., {'john'} is a subset of {'john', 'doe'}).
+            # 3. There is a non-trivial intersection (e.g., {'john', 'd'} and {'john', 'doe'} intersect on 'john').
+            #    We add the len > 1 check to avoid matching on single initials like 'a'.
+
+            intersection = norm_set_1.intersection(norm_set_2)
+            is_match = False
+            
+            if norm_set_1 == norm_set_2:
+                is_match = True
+            elif norm_set_1.issubset(norm_set_2) or norm_set_2.issubset(norm_set_1):
+                is_match = True
+            elif intersection and any(len(name_part) > 1 for name_part in intersection):
+                is_match = True
+
+            if is_match:
                 common_attendees_raw_names.append(list(attendee_set_1_raw)[i])
                 matched_indices_in_set_2.add(j)
-                break # Move to the next person in set 1
+                break # Match found, move to the next person in set 1
 
     return common_attendees_raw_names
 
