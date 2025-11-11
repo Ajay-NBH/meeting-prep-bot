@@ -1104,6 +1104,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 HEADER_PREV_BRAND_TRAITS = "brand traits"   # Adjust
                 HEADER_PREV_CUSTOMER_NEEDS = "customer needs" # Adjust
                 HEADER_PREV_CLIENT_PAIN_POINTS = "client pain points" # Adjust
+                HEADER_PREV_COMPETITION_DISCUSSION = "competition discussion"
 
                 first_row_dict = file_data_object[0] if isinstance(file_data_object[0], dict) else {}
                 header_values = first_row_dict.get("header", [])
@@ -1153,6 +1154,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                             prev_meetings_nbh_participants_col_idx = lower_header.index(HEADER_PREV_NBH_PARTICIPANTS_NAMES)
                             #print(f"Found '{HEADER_PREV_NBH_PARTICIPANTS_NAMES}' at index {nbh_participants_names_col_idx}")
 
+                            prev_meetings_competition_col_idx = lower_header.index(HEADER_PREV_COMPETITION_DISCUSSION)
+
                 except ValueError as e_val: # Catch the ValueError and print its specific message
                     print(f"    VALUE ERROR while finding column index: {e_val}") # This will tell you *which string* was not found
                     print(f"    Warning: Essential columns for previous meeting analysis not found in '{file_name}'. Skipping.")
@@ -1170,6 +1173,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                     prev_meetings_brand_traits_col_idx = -1
                     prev_meetings_customer_needs_col_idx = -1
                     prev_meetings_client_pain_points_col_idx = -1
+                    prev_meetings_competition_col_idx = -1
                     continue # Skip further processing for this file
             
                 all_past_meetings_for_brand = []
@@ -1380,6 +1384,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
             mtg_data["brand_traits"] = get_cell_val_from_row(row_values, prev_meetings_brand_traits_col_idx)
             mtg_data["customer_needs"] = get_cell_val_from_row(row_values, prev_meetings_customer_needs_col_idx)
             mtg_data["client_pain_points"] = get_cell_val_from_row(row_values, prev_meetings_client_pain_points_col_idx)
+            mtg_data["competition"] = get_cell_val_from_row(row_values, prev_meetings_competition_col_idx)
 
             # Perform the name comparison to set the follow-up flag for this specific meeting
             mtg_data["is_direct_follow_up_candidate"] = False
@@ -1417,6 +1422,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 if mtg_data_llm.get('actions') != "N/A": note_parts.append(f"- Action Items: {mtg_data_llm['actions']}\n")
                 if mtg_data_llm.get('key_questions') != "N/A": note_parts.append(f"- Key Client Questions: {mtg_data_llm['key_questions']}\n")
                 if mtg_data_llm.get('client_pain_points') != "N/A": note_parts.append(f"- Client Pain Points Discussed: {mtg_data_llm['client_pain_points']}\n")
+                if mtg_data_llm.get('competition') != "N/A": note_parts.append(f"- Competition Discussion: {mtg_data_llm['competition']}\n")
                 note_parts.append("---\n")
                 previous_meeting_notes_for_llm_list.append("".join(note_parts))
 
