@@ -2466,15 +2466,9 @@ def main():
         feedback_footer = f"""
 \n\n
 ---
-## 📝 Help Us Improve These Briefs!
-**"We want our Pre-Meeting Briefs to work as hard as you do!"** 💼⚡
+Give Your Feedback on The Pre Meeting Briefs. 
+👉 Click Here to Fill the Feedback Form ({FEEDBACK_FORM_URL})
 
-We need to know if the **Case Studies** and **Action Items** provided here were actually helpful for your meeting.
-
-**Please take 30 seconds to rate this brief:**
-👉 [**Click Here to Fill the Feedback Form**]({FEEDBACK_FORM_URL})
-
-*(Your input directly trains the AI to provide better insights next time)*
 """
 
         # 3. Append the footer to the generated brief
