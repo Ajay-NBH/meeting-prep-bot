@@ -2459,6 +2459,29 @@ def main():
         print(f"  Proceeding with brief generation for: {meeting_data['brand_name']}")
         generated_brief = generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, meeting_data, internal_nbh_data_for_brand_str)
 
+        FEEDBACK_FORM_URL = "https://forms.gle/Ho9XLKsuGYhWBrBw7"
+
+        # 2. Define the Footer Text (Using Markdown for the email)
+        # We use the tagline from your form to keep it consistent.
+        feedback_footer = f"""
+\n\n
+---
+## 📝 Help Us Improve These Briefs!
+**"We want our Pre-Meeting Briefs to work as hard as you do!"** 💼⚡
+
+We need to know if the **Case Studies** and **Action Items** provided here were actually helpful for your meeting.
+
+**Please take 30 seconds to rate this brief:**
+👉 [**Click Here to Fill the Feedback Form**]({FEEDBACK_FORM_URL})
+
+*(Your input directly trains the AI to provide better insights next time)*
+"""
+
+        # 3. Append the footer to the generated brief
+        # Only add it if the brief was generated successfully (no errors)
+        if generated_brief and "Error:" not in generated_brief:
+            generated_brief += feedback_footer
+
         if "Error:" in generated_brief or not generated_brief.strip(): # Check for errors from LLM
             print(f"  Failed to generate brief for '{meeting_data['title']}': {generated_brief}")
             error_body_html = f"""
