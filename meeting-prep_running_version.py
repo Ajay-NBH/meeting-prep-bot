@@ -83,7 +83,7 @@ FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET = "Physical_campaigns_live_sheet" # From you
 FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET = "Digital_Campaigns_live_sheet" # From your image (note "live sheet")
 FILE_NAME_COM_DATA_GSHEET = "NoBroker_Overall_Data" # From your image
 FILE_NAME_NBH_PREVIOUS_MEETINGS_GSHEET = "NBH_previous_meetings_updated"
-
+FILE_NAME_LATEST_CASE_STUDIES_GSHEET = "Consolidated Case Studies - Master"
 
 def parse_names_from_cell_helper(cell_value_str):
     """
@@ -934,6 +934,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         # THIS IS THE CORRECTED INDENTATION LEVEL FOR THE ELIF
         elif (FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in file_name.lower() or \
               FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in file_name.lower()) and \
+              FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in file_name.lower()) and \
              mime_type == 'application/vnd.google-apps.spreadsheet':
             
             #rows_data_from_sheet = read_gdrive_file_content_with_slides(drive_service, sheets_service, file_id, file_name, mime_type)
