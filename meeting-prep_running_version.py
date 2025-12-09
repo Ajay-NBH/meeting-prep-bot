@@ -957,20 +957,24 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                     try:
                         lower_header = [str(h).strip().lower() for h in header_values]
                         brand_name_col_idx = lower_header.index("brand name")
-                        industry_col_idx = lower_header.index("industry") # Ensure this column exists in your sheets!
+                        industry_col_idx = lower_header.index("industry") 
                     except ValueError:
-                        missing_cols = []
-                        if "brand name" not in lower_header: missing_cols.append("'Brand Name'")
-                        if "industry" not in lower_header: missing_cols.append("'Industry'")
-                        print(f"    Warning: Required column(s) {', '.join(missing_cols)} not found in header of {file_name}. Skipping detailed campaign processing for this file.")
-                        final_context_parts_for_llm.append(f"## Historical Campaign Data (from '{file_name}'):\nRequired columns missing in sheet header. Cannot process for relevant campaigns.\n")
-                        continue # Skip to next file if essential columns are missing
+                        # ... (keep your existing error handling here) ...
+                        continue 
 
-                for row_info in file_data_object:
+                # === IMPROVEMENT: SEPARATE DATA AND REVERSE ===
+                # We slice [1:] to assume row 0 is header, then reverse to get most recent (bottom) rows first
+                data_rows = file_data_object[1:] if len(file_data_object) > 1 else []
+                
+                for row_info in reversed(data_rows):
                     if not isinstance(row_info, dict) or 'values' not in row_info or not row_info['values']: continue
-                    if row_info.get("values") == header_values : # Skip header row
+                    
+                    # Double check we aren't processing the header if it somehow got in
+                    if row_info.get("values") == header_values: 
                         continue
-
+                    
+                    # ... (The rest of your existing processing logic matches here) ...
+                    
                     row_values = row_info['values']
                     is_relevant_row = False
                     relevance_reason = ""
