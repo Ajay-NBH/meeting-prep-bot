@@ -930,12 +930,13 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 final_context_parts_for_llm.append(f"## Case Studies (from PDF: '{file_name}'):\nNo text data extracted or unexpected format.\n")
             continue # Move to next file
 
-        # 3. & 4. Physical & Digital Campaigns (GSheets - Extract relevant rows)
-        # THIS IS THE CORRECTED INDENTATION LEVEL FOR THE ELIF
-        elif (FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in file_name.lower() or \
-              FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in file_name.lower()) and \
-              FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in file_name.lower()) and \
-             mime_type == 'application/vnd.google-apps.spreadsheet':
+        # 3. & 4. & 5. Physical, Digital & NEW Latest Campaigns
+        elif (
+            (FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in file_name.lower() or 
+             FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in file_name.lower() or 
+             FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in file_name.lower())
+            and mime_type == 'application/vnd.google-apps.spreadsheet'
+        ):
             
             #rows_data_from_sheet = read_gdrive_file_content_with_slides(drive_service, sheets_service, file_id, file_name, mime_type)
             
