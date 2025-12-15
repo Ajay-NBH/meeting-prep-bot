@@ -716,7 +716,7 @@ def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, 
 
 # --- Modify get_internal_nbh_data_for_brand ---
 def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_client, 
-                                    current_target_brand_name,target_brand_industry,current_meeting_data,EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL):
+                                    current_target_brand_name,target_brand_industry,current_meeting_data,EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL, master_sheet_id):
     # ... (initial checks for services and folder ID remain) ...
     """
     Fetches and processes internal NBH data relevant to a target brand for an upcoming meeting, aggregating summaries, campaign data, and previous meeting insights.
