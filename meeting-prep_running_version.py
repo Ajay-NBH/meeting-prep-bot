@@ -1086,218 +1086,98 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
             final_context_parts_for_llm.append("".join(com_data_structured_output))
             continue 
         
-        # 6. NBH Previous Meetings Data
+        # 6. NBH Previous Meetings Data (DIRECT API FIX)
         elif FILE_NAME_NBH_PREVIOUS_MEETINGS_GSHEET.lower() in file_name.lower() and \
              mime_type == 'application/vnd.google-apps.spreadsheet':
-            print(f"    Processing NBH Previous Meetings Sheet: {file_name}")
-            previous_meeting_notes_list = [] # Use a list to build strings
-
-            if isinstance(file_data_object, list) and file_data_object:              
-                # --- Define expected header names for this sheet (adjust as per your sheet) ---
-                # It's crucial these match your sheet's column headers exactly (case-insensitive)
-                # Based on your sample output: 'Meeitng ID', 'Meeting Date', 'Brand Name', 'Meeting Title',
-                # 'Industry Type', 'Brand Size', 'Meeting Type', 'Meeting Agenda', 'NBH Participants', 'Client Participants',
-                # 'Key Discussion Points', 'Action Items/Next Steps', 'Is Follow Up?'
-                # Let's assume a few key ones for matching:
-                HEADER_PREV_BRAND_NAME = "brand name"
-                HEADER_PREV_MEETING_DATE = "meeting date" # For sorting
-                HEADER_PREV_CLIENT_PARTICIPANTS_NAMES = "client attendees" # Column with client names
-                HEADER_PREV_NBH_PARTICIPANTS_NAMES = "nobroker attendees"       # Column with NBH names
-                HEADER_PREV_KEY_DISCUSSION = "key discussion points"
-                HEADER_PREV_ACTION_ITEMS = "action items"
-                #HEADER_PREV_IS_FOLLOW_UP_TAG = "is follow up?" # A column you might add to explicitly tag follow-ups
-                HEADER_PREV_KEY_QUESTIONS = "key questions" # Adjust to your exact column name
-                HEADER_PREV_BRAND_TRAITS = "brand traits"   # Adjust
-                HEADER_PREV_CUSTOMER_NEEDS = "customer needs" # Adjust
-                HEADER_PREV_CLIENT_PAIN_POINTS = "client pain points" # Adjust
-                HEADER_PREV_COMPETITION_DISCUSSION = "competition discussion"
-
-                first_row_dict = file_data_object[0] if isinstance(file_data_object[0], dict) else {}
-                header_values = first_row_dict.get("header", [])
-                lower_header = [str(h).strip().lower() for h in header_values]
-
-                # Add more column indices as needed based on what you want to extract
-                print(f"    DEBUG NBH_Previous_meetings - Parsed Headers (lower_header): {lower_header}") # <--- ADD THIS
-
-                try:
-                            #print(f"Attempting to find: '{HEADER_PREV_BRAND_NAME}'")
-                            prev_meetings_brand_col_idx = lower_header.index(HEADER_PREV_BRAND_NAME)
-                            #print(f"Found '{HEADER_PREV_BRAND_NAME}' at index {prev_brand_col_idx}")
-
-                            #print(f"Attempting to find: '{HEADER_PREV_MEETING_DATE}'")
-                            prev_meetings_date_col_idx = lower_header.index(HEADER_PREV_MEETING_DATE)
-                            #print(f"Found '{HEADER_PREV_MEETING_DATE}' at index {prev_date_col_idx}")
-
-                            #print(f"Attempting to find: '{HEADER_PREV_CLIENT_PARTICIPANTS_NAMES}'")
-                            prev_meetings_client_participants_col_idx = lower_header.index(HEADER_PREV_CLIENT_PARTICIPANTS_NAMES)
-                            #print(f"Found '{HEADER_PREV_CLIENT_PARTICIPANTS_NAMES}' at index {client_participants_names_col_idx}")
-
-                            #print(f"Attempting to find: '{HEADER_PREV_KEY_DISCUSSION}'")
-                            prev_meetings_key_discussion_col_idx = lower_header.index(HEADER_PREV_KEY_DISCUSSION)
-                            #print(f"Found '{HEADER_PREV_KEY_DISCUSSION}' at index {key_discussion_col_idx}")
-
-                            #print(f"Attempting to find: '{HEADER_PREV_ACTION_ITEMS}'")
-                            prev_meetings_action_items_col_idx = lower_header.index(HEADER_PREV_ACTION_ITEMS)
-                            #print(f"Found '{HEADER_PREV_ACTION_ITEMS}' at index {action_items_col_idx}")
-
-                            #print(f"Attempting to find: '{HEADER_PREV_KEY_QUESTIONS}'")
-                            prev_meetings_key_questions_col_idx = lower_header.index(HEADER_PREV_KEY_QUESTIONS)
-                            #print(f"Found '{HEADER_PREV_KEY_QUESTIONS}' at index {key_questions_col_idx}")
-
-                            #print(f"Attempting to find: '{HEADER_PREV_BRAND_TRAITS}'")
-                            prev_meetings_brand_traits_col_idx = lower_header.index(HEADER_PREV_BRAND_TRAITS)
-                            #print(f"Found '{HEADER_PREV_BRAND_TRAITS}' at index {brand_traits_col_idx}")
-
-                            #print(f"Attempting to find: '{HEADER_PREV_CUSTOMER_NEEDS}'")
-                            prev_meetings_customer_needs_col_idx = lower_header.index(HEADER_PREV_CUSTOMER_NEEDS)
-                            #print(f"Found '{HEADER_PREV_CUSTOMER_NEEDS}' at index {customer_needs_col_idx}")
-
-                            #print(f"Attempting to find: '{HEADER_PREV_CLIENT_PAIN_POINTS}'")
-                            prev_meetings_client_pain_points_col_idx = lower_header.index(HEADER_PREV_CLIENT_PAIN_POINTS)
-                            #print(f"Found '{HEADER_PREV_CLIENT_PAIN_POINTS}' at index {client_pain_points_col_idx}")
-
-                            #print(f"Attempting to find: '{HEADER_PREV_NBH_PARTICIPANTS_NAMES}'")
-                            prev_meetings_nbh_participants_col_idx = lower_header.index(HEADER_PREV_NBH_PARTICIPANTS_NAMES)
-                            #print(f"Found '{HEADER_PREV_NBH_PARTICIPANTS_NAMES}' at index {nbh_participants_names_col_idx}")
-
-                            prev_meetings_competition_col_idx = lower_header.index(HEADER_PREV_COMPETITION_DISCUSSION)
-
-                except ValueError as e_val: # Catch the ValueError and print its specific message
-                    print(f"    VALUE ERROR while finding column index: {e_val}") # This will tell you *which string* was not found
-                    print(f"    Warning: Essential columns for previous meeting analysis not found in '{file_name}'. Skipping.")
-                    # ... your existing error handling in except block ...
-                    previous_meeting_notes_list.append(f"Could not process previous meetings sheet due to missing essential columns (e.g., Brand Name, Meeting Date, Key Discussion Points).\n")
-                    final_context_parts_for_llm.append("".join(previous_meeting_notes_list))
-                    # Re-initialize all indices to -1 within the except block if one fails, so subsequent code doesn't use stale (but valid looking) indices from a previous file
-                    prev_meetings_brand_col_idx = -1
-                    prev_meetings_date_col_idx = -1
-                    prev_meetings_client_participants_col_idx = -1
-                    prev_meetings_nbh_participants_col_idx = -1
-                    prev_meetings_key_discussion_col_idx = -1
-                    prev_meetings_action_items_col_idx = -1
-                    prev_meetings_key_questions_col_idx = -1
-                    prev_meetings_brand_traits_col_idx = -1
-                    prev_meetings_customer_needs_col_idx = -1
-                    prev_meetings_client_pain_points_col_idx = -1
-                    prev_meetings_competition_col_idx = -1
-                    continue # Skip further processing for this file
             
-                all_past_meetings_for_brand = []
+            print(f"    Processing Previous Meetings: Switching to DIRECT MASTER SHEET API to avoid ImportRange timeout...")
+            
+            try:
+                # 1. Fetch Headers from Master Sheet (Row 1)
+                header_result = sheets_service.spreadsheets().values().get(
+                    spreadsheetId=master_sheet_id, range="Meeting_data!A1:AK1"
+                ).execute()
+                headers = header_result.get('values', [])[0] if header_result.get('values') else []
 
-                for row_info in file_data_object:
-                    if not isinstance(row_info, dict) or 'values' not in row_info or not row_info['values']:
-                        continue
-                    if row_info.get("values") == header_values:  # Skip header row
-                        continue
+                # 2. Fetch Data Rows from Master Sheet (Row 3500 onwards)
+                data_result = sheets_service.spreadsheets().values().get(
+                    spreadsheetId=master_sheet_id, range="Meeting_data!A3500:AK"
+                ).execute()
+                data_rows = data_result.get('values', [])
+
+                if headers and data_rows:
+                    print(f"    Successfully fetched {len(data_rows)} rows directly from Master Sheet.")
                     
-                    row_values = row_info['values']# Initialize for current row
+                    lower_header = [str(h).strip().lower() for h in headers]
                     
-                    # Extract brand name from the previous meeting row
-                    prev_meeting_brand_name_from_sheet = ""
+                    # Update indices so the code further down knows which column is which
+                    try:
+                        prev_meetings_brand_col_idx = lower_header.index("brand name")
+                        prev_meetings_date_col_idx = lower_header.index("meeting date")
+                        prev_meetings_key_discussion_col_idx = lower_header.index("key discussion points")
+                        prev_meetings_action_items_col_idx = lower_header.index("action items")
+                        prev_meetings_nbh_participants_col_idx = lower_header.index("nobroker attendees")
+                        
+                        # Optional columns
+                        if "key questions" in lower_header: prev_meetings_key_questions_col_idx = lower_header.index("key questions")
+                        if "brand traits" in lower_header: prev_meetings_brand_traits_col_idx = lower_header.index("brand traits")
+                        if "customer needs" in lower_header: prev_meetings_customer_needs_col_idx = lower_header.index("customer needs")
+                        if "client pain points" in lower_header: prev_meetings_client_pain_points_col_idx = lower_header.index("client pain points")
+                        if "competition discussion" in lower_header: prev_meetings_competition_col_idx = lower_header.index("competition discussion")
 
-                    if prev_meetings_brand_col_idx != -1 and len(row_values) > prev_meetings_brand_col_idx:
-                        # Use .strip() to remove whitespace AND non-breaking spaces
-                        prev_meeting_brand_name_from_sheet = str(row_values[prev_meetings_brand_col_idx] or "").replace('\xa0', ' ').strip()
+                    except ValueError as e:
+                        print(f"    Error finding required columns in Master Sheet headers: {e}")
+                        continue 
 
-                    if not prev_meeting_brand_name_from_sheet:
-                        continue
+                    # Process the rows
+                    for i, row in enumerate(data_rows):
+                        # Pad the row to match header length
+                        padded_row = row + [''] * (len(headers) - len(row))
 
+                        # Extract Brand Name
+                        sheet_brand = str(padded_row[prev_meetings_brand_col_idx] or "").replace('\xa0', ' ').strip()
+                        
+                        if not sheet_brand: continue
 
-                    # --- START OF TARGETED DEBUG BLOCK ---
-                    # Only print if the sheet brand name (lowercase) potentially contains the target brand name (lowercase)
-                    # or vice-versa. This helps narrow down the debug output significantly.
-                    # This condition is intentionally broad to catch near misses or partial matches for debugging.
-                    target_brand_lower = current_target_brand_name.lower()
-                    sheet_brand_lower = prev_meeting_brand_name_from_sheet.lower()
-
-                    #if target_brand_lower in sheet_brand_lower or \
-                    #   (sheet_brand_lower and target_brand_lower.startswith(sheet_brand_lower)) or \
-                    #   (target_brand_lower and sheet_brand_lower.startswith(target_brand_lower)) or \
-                    #   (target_brand_lower == "chitale" and "chitale" in sheet_brand_lower) or \
-                    #   (target_brand_lower == "giva" and "giva" in sheet_brand_lower) : # Add more specific checks if needed
-
-                        #print(f"    TARGETED_PREV_MTG_DEBUG (Row {row_info.get('row_index', 'N/A')} in sheet '{file_name}'):")
-                        #print(f"        Current Target Brand (Original) : '{current_target_brand_name}'")
-                        #print(f"        Sheet Brand Name (Original)   : '{prev_meeting_brand_name_from_sheet}'")
-                        #print(f"        --- For Comparison ---")
-                        #print(f"        Current Target Brand (lower)  : '{target_brand_lower}' (len {len(target_brand_lower)})")
-                        #print(f"        Sheet Brand Name (lower)    : '{sheet_brand_lower}' (len {len(sheet_brand_lower)})")
-                        # Optional: Byte representation for very tricky cases
-                        # print(f"        Bytes Current Target (lower): {target_brand_lower.encode('utf-8', 'surrogateescape')}")
-                        # print(f"        Bytes Sheet Brand (lower)   : {sheet_brand_lower.encode('utf-8', 'surrogateescape')}")
-                        #is_match = (sheet_brand_lower == target_brand_lower)
-                        #print(f"        Exact lowercase match?        : {is_match}")
-                        #print(f"        ------------------------------------")
-                    # --- END OF TARGETED DEBUG BLOCK ---
-
-                    is_a_match = False
-
-
-                    # Minimum length for a brand name to be considered for matching to avoid trivial matches (e.g., 'a', 'an')
-                    MIN_BRAND_NAME_LEN = 3 
-                    
-                    if len(target_brand_lower) < MIN_BRAND_NAME_LEN or len(sheet_brand_lower) < MIN_BRAND_NAME_LEN:
-                        # If either name is too short, only an exact match is allowed.
-                        if target_brand_lower == sheet_brand_lower:
-                            is_a_match = True
-                    else:
-                        # Rule 1: Always prioritize an exact match. This is the strongest signal.
-                        if target_brand_lower == sheet_brand_lower:
-                            is_a_match = True
+                        # Matching Logic
+                        target_brand_lower = current_target_brand_name.lower()
+                        sheet_brand_lower = sheet_brand.lower()
+                        is_match = False
+                        
+                        if len(target_brand_lower) < 3 or len(sheet_brand_lower) < 3:
+                            if target_brand_lower == sheet_brand_lower: is_match = True
                         else:
-                            # Rule 2: Use regex with word boundaries (\b) to check if one name is a
-                            # "whole word" component of the other. This prevents matching "advan" inside "advances".
-                            
-                            # Check if the (potentially shorter) target brand is a whole word in the sheet brand.
-                            # e.g., target="Chitale", sheet="Chitale Bandhu" -> MATCH
-                            regex_target_in_sheet = r'\b' + re.escape(target_brand_lower) + r'\b'
-                            if re.search(regex_target_in_sheet, sheet_brand_lower):
-                                is_a_match = True
-                            
-                            # Check if the (potentially shorter) sheet brand is a whole word in the target brand.
-                            # e.g., target="Meeting with Chitale Bandhu", sheet="Chitale Bandhu" -> MATCH
-                            else:
-                                regex_sheet_in_target = r'\b' + re.escape(sheet_brand_lower) + r'\b'
-                                if re.search(regex_sheet_in_target, target_brand_lower):
-                                    is_a_match = True
-                    
-
-                    if is_a_match:
-                        # This previous meeting was with the same brand
-                        print(f"    *** VERIFIED MATCH: Target='{target_brand_lower}' <==> Sheet='{sheet_brand_lower}'")
-                        print(f"      MATCH FOUND for previous meeting row {row_info.get('row_index')}: Brand match for '{current_target_brand_name}'")
-                        meeting_details_dict = {
-                            "original_row_index": row_info.get("row_index", "N/A"), # Get it here
-                            "original_row_info": row_info
-                        }    
-                        try:
-                            # Extract date for sorting (handle potential date parsing errors)
-                            date_str = str(row_values[prev_meetings_date_col_idx]) if len(row_values) > prev_meetings_date_col_idx else None
-                            if date_str:
-                                # Attempt to parse common date formats, be robust
-                                for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%y"): # Add more if needed
+                            if target_brand_lower == sheet_brand_lower: is_match = True
+                            elif re.search(r'\b' + re.escape(target_brand_lower) + r'\b', sheet_brand_lower): is_match = True
+                            elif re.search(r'\b' + re.escape(sheet_brand_lower) + r'\b', target_brand_lower): is_match = True
+                        
+                        if is_match:
+                            row_info_mock = {
+                                "row_index": 3500 + i,
+                                "values": padded_row
+                            }
+                            meeting_details = {
+                                "original_row_index": 3500 + i,
+                                "original_row_info": row_info_mock
+                            }
+                            # Parse Date
+                            date_val = str(padded_row[prev_meetings_date_col_idx])
+                            try:
+                                for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%d-%m-%Y"):
                                     try:
-                                        meeting_details_dict["date_obj"] = datetime.datetime.strptime(date_str.split(" ")[0], fmt).date() # Take only date part
+                                        meeting_details["date_obj"] = datetime.datetime.strptime(date_val.split(" ")[0], fmt).date()
                                         break
-                                    except ValueError:
-                                        pass
-                                if "date_obj" not in meeting_details_dict:
-                                     meeting_details_dict["date_obj"] = datetime.date.min # Fallback for unparseable dates
-                            else:
-                                meeting_details_dict["date_obj"] = datetime.date.min
-                        except Exception:
-                            meeting_details_dict["date_obj"] = datetime.date.min # Fallback
-                        all_past_meetings_for_brand.append(meeting_details_dict)
+                                    except ValueError: pass
+                                if "date_obj" not in meeting_details: meeting_details["date_obj"] = datetime.date.min
+                            except: meeting_details["date_obj"] = datetime.date.min
 
-                if all_past_meetings_for_brand:
-                    matching_previous_meetings_details_accumulator.extend(all_past_meetings_for_brand)               
+                            matching_previous_meetings_details_accumulator.append(meeting_details)
+                            
+            except Exception as e:
+                print(f"    CRITICAL ERROR fetching Master Sheet directly: {e}")
+                final_context_parts_for_llm.append(f"## Previous Meetings Error:\nCould not fetch direct data from Master Sheet: {e}\n")
 
-            elif isinstance(file_data_object, str): # Error reading sheet
-                final_context_parts_for_llm.append(f"## Previous NBH Meetings (from '{file_name}'):\nError processing the sheet: {file_data_object}\n")
-            else: # No data
-                final_context_parts_for_llm.append(f"## Previous NBH Meetings (from '{file_name}'):\nNo data rows found in the sheet.\n")
-            # This 'continue' ensures we don't fall through to generic file handling for this specific file type
-            continue 
+            continue
 
         # Fallback for other files or unrecognized structures
         elif isinstance(file_data_object, str) and file_data_object.strip():
