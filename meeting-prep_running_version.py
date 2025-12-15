@@ -2206,10 +2206,11 @@ def main():
                 sheets_service=sheets_service,
                 gemini_llm_client=gemini_llm_client,
                 current_target_brand_name=current_brand_name_for_meeting,
-                target_brand_industry=target_brand_industry,  # <-- Pass the extracted industry
+                target_brand_industry=target_brand_industry, 
                 current_meeting_data=meeting_data,
                 EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP=EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP,
-                AGENT_EMAIL=AGENT_EMAIL
+                AGENT_EMAIL=AGENT_EMAIL,
+                master_sheet_id=master_sheet_id 
             )
         else:
             # If services are NOT available, create the default/fallback structure.
