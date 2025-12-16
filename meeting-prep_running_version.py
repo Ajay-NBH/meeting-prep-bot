@@ -1787,6 +1787,23 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
     brand_attendees_info_str = "; ".join([f"{att['name']} ({att['email']})" for att in meeting_data['brand_attendees_info']])
     # ========== END NEW CODE ==========
 
+    # ========== NEW CODE: Format potential key contacts ==========
+potential_contacts_str = ""
+key_contacts_list = meeting_data.get('potential_key_contacts', [])
+
+if key_contacts_list:
+    potential_contacts_str = "**Found Key Contacts:**\n\n"
+    for contact in key_contacts_list:
+        linkedin_display = contact.get('linkedin_url', '(LinkedIn Not Verified)')
+        if linkedin_display and linkedin_display != '(LinkedIn Not Verified)':
+            linkedin_display = f"[LinkedIn Profile]({linkedin_display})"
+        
+        potential_contacts_str += f"- **{contact['name']}** - {contact['title']} - {linkedin_display}\n"
+        potential_contacts_str += f"  - Why They Matter: {contact['reasoning']}\n\n"
+else:
+    potential_contacts_str = "**No additional key contacts found through search.**\n\n"
+# ========== END NEW CODE ==========
+
 
     prompt_filled = YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI.format(
     MEETING_DATETIME=meeting_data['start_time_str'],
@@ -1797,7 +1814,8 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
     BRAND_NAME_FOR_BODY=meeting_data['brand_name'],
     MEETING_TITLE=meeting_data.get('title', 'N/A'),
     BRAND_ATTENDEES_FULL_DETAILS=brand_attendees_info_str,
-    BRAND_ATTENDEES_WITH_LINKEDIN=brand_attendees_with_linkedin_str,  
+    BRAND_ATTENDEES_WITH_LINKEDIN=brand_attendees_with_linkedin_str,
+    POTENTIAL_KEY_CONTACTS=potential_contacts_str,
     INTERNAL_NBH_DATA_SUMMARY=internal_data_summary_str
 )
     
