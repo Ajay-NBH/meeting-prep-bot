@@ -306,8 +306,9 @@ def get_brand_attendees_linkedin_info(brand_attendees_list, brand_name, gemini_l
             'linkedin_url': linkedin_url if linkedin_url else '(LinkedIn Not Verified)'
         })
         
-        # Wait 1 second to avoid hitting rate limits
-        time.sleep(1)
+        # Wait 10 seconds to avoid hitting 429 Rate Limits
+        print("    ⏳ Waiting 10s to respect API quota...")
+        time.sleep(10)
     
     return attendees_with_linkedin
 
