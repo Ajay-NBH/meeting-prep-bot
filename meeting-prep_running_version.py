@@ -2405,9 +2405,8 @@ def main():
             continue
 
         # Step 7: Merge the successful LLM results into the main meeting_data dictionary
-       
-       meeting_data.update(brand_details)
-        
+        meeting_data.update(brand_details)
+
         # ========== NEW CODE STARTS HERE ==========
         # Get LinkedIn profiles for brand attendees
         print(f"  📱 Fetching LinkedIn profiles for brand attendees...")
