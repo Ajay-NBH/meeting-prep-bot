@@ -207,6 +207,110 @@ def find_common_attendees(attendee_set_1_raw, attendee_set_2_raw):
 
 # --- END OF NEW HELPER FUNCTIONS ---
 
+# ========== NEW FUNCTION 1: Search for LinkedIn Profile ==========
+def search_linkedin_profile(person_name, company_name, gemini_llm_client):
+    """
+    Uses Gemini's Google Search to find a LinkedIn URL.
+    Returns the verified LinkedIn URL or None.
+    """
+    if not gemini_llm_client:
+        return None
+    
+    # Create search query
+    search_query = f'site:in.linkedin.com/in/ "{person_name}" "{company_name}"'
+    
+    # Create prompt for Gemini
+    search_prompt = f"""
+Use Google Search to find the LinkedIn profile for:
+- Name: {person_name}
+- Company: {company_name}
+
+Search Query: {search_query}
+
+IMPORTANT RULES:
+1. Search for this exact person at this exact company
+2. If you find their LinkedIn profile URL, return ONLY the URL
+3. The URL format should be: https://in.linkedin.com/in/[something]
+4. If you cannot find it, return exactly: NOT_FOUND
+5. Do not explain, just return the URL or NOT_FOUND
+
+Your response:"""
+
+    # Setup Google Search
+    grounding_tool = types.Tool(google_search=types.GoogleSearch())
+    config = types.GenerateContentConfig(
+        temperature=0.1,
+        tools=[grounding_tool]
+    )
+    
+    try:
+        # Call Gemini with search capability
+        response = gemini_llm_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=search_prompt,
+            config=config
+        )
+        
+        # Get the text response
+        result_text = ""
+        for part in response.candidates[0].content.parts:
+            result_text += part.text
+        
+        result_text = result_text.strip()
+        
+        # Check if not found
+        if "NOT_FOUND" in result_text or not result_text:
+            return None
+        
+        # Extract URL using pattern matching
+        import re
+        url_pattern = r'https?://(?:www\.)?(?:in\.)?linkedin\.com/in/[a-zA-Z0-9_-]+'
+        urls = re.findall(url_pattern, result_text)
+        
+        if urls:
+            return urls[0]
+        
+        return None
+        
+    except Exception as e:
+        print(f"  Error searching LinkedIn for {person_name}: {e}")
+        return None
+
+
+# ========== NEW FUNCTION 2: Get LinkedIn for All Attendees ==========
+def get_brand_attendees_linkedin_info(brand_attendees_list, brand_name, gemini_llm_client):
+    """
+    For each brand attendee, search for their LinkedIn profile.
+    Returns a list with LinkedIn URLs added.
+    """
+    attendees_with_linkedin = []
+    
+    for attendee in brand_attendees_list:
+        attendee_name = attendee.get('name', '')
+        attendee_email = attendee.get('email', '')
+        
+        # Clean up name if it looks like an email
+        if '@' in attendee_name:
+            # Convert "john.doe@example.com" to "John Doe"
+            attendee_name = attendee_email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
+        
+        print(f"    🔍 Searching LinkedIn for: {attendee_name} at {brand_name}")
+        
+        # Do the actual LinkedIn search
+        linkedin_url = search_linkedin_profile(attendee_name, brand_name, gemini_llm_client)
+        
+        # Add to results
+        attendees_with_linkedin.append({
+            'name': attendee_name,
+            'email': attendee_email,
+            'linkedin_url': linkedin_url if linkedin_url else '(LinkedIn Not Verified)'
+        })
+        
+        # Wait 1 second to avoid hitting rate limits
+        time.sleep(1)
+    
+    return attendees_with_linkedin
+
 class Industry(enum.Enum):
     FMCG = "FMCG"
     AUTOMOTIVE_AND_TRANSPORT = "Automotive & Transportation"
@@ -1554,23 +1658,38 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
     if not gemini_llm_client:
         return "Error: Gemini model not available."
 
-    # ... (Format placeholders as in previous thought: nbh_attendee_names_str, brand_attendees_details_str etc.)
     nbh_attendee_names_str = ", ".join([att['name'] for att in meeting_data['nbh_attendees']])
-    brand_attendees_info_str = "; ".join([f"{att['name']} ({att['email']})" for att in meeting_data['brand_attendees_info']])
     brand_attendee_names_only_str = ", ".join([att['name'] for att in meeting_data['brand_attendees_info']])
+    
+    # ========== NEW CODE: Format brand attendees with LinkedIn URLs ==========
+    brand_attendees_with_linkedin_str = ""
+    for att in meeting_data['brand_attendees_info']:
+        linkedin_display = att.get('linkedin_url', '(LinkedIn Not Verified)')
+        
+        # If we have a real URL, make it a markdown link
+        if linkedin_display and linkedin_display != '(LinkedIn Not Verified)':
+            linkedin_display = f"[LinkedIn Profile]({linkedin_display})"
+        
+        # Add this attendee's info to the string
+        brand_attendees_with_linkedin_str += f"- **{att['name']}** ({att['email']}) - {linkedin_display}\n"
+    
+    # Keep the old format too for backward compatibility
+    brand_attendees_info_str = "; ".join([f"{att['name']} ({att['email']})" for att in meeting_data['brand_attendees_info']])
+    # ========== END NEW CODE ==========
 
 
     prompt_filled = YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI.format(
-        MEETING_DATETIME=meeting_data['start_time_str'],
-        MEETING_LOCATION=meeting_data['location'],
-        BRAND_NAME=meeting_data['brand_name'], # This is the overall brand name
-        BRAND_ATTENDEES_NAMES=brand_attendee_names_only_str,
-        NBH_ATTENDEES_NAMES=nbh_attendee_names_str,
-        BRAND_NAME_FOR_BODY=meeting_data['brand_name'], # Used within the prompt body
-        MEETING_TITLE=meeting_data.get('title', 'N/A'), # <<< ADDED THIS
-        BRAND_ATTENDEES_FULL_DETAILS=brand_attendees_info_str,
-        INTERNAL_NBH_DATA_SUMMARY=internal_data_summary_str
-    )
+    MEETING_DATETIME=meeting_data['start_time_str'],
+    MEETING_LOCATION=meeting_data['location'],
+    BRAND_NAME=meeting_data['brand_name'],
+    BRAND_ATTENDEES_NAMES=brand_attendee_names_only_str,
+    NBH_ATTENDEES_NAMES=nbh_attendee_names_str,
+    BRAND_NAME_FOR_BODY=meeting_data['brand_name'],
+    MEETING_TITLE=meeting_data.get('title', 'N/A'),
+    BRAND_ATTENDEES_FULL_DETAILS=brand_attendees_info_str,
+    BRAND_ATTENDEES_WITH_LINKEDIN=brand_attendees_with_linkedin_str,  
+    INTERNAL_NBH_DATA_SUMMARY=internal_data_summary_str
+)
     
     grounding_tool = types.Tool(
         google_search=types.GoogleSearch()
@@ -2158,7 +2277,20 @@ def main():
             continue
 
         # Step 7: Merge the successful LLM results into the main meeting_data dictionary
-        meeting_data.update(brand_details)
+       meeting_data.update(brand_details)
+        
+        # ========== NEW CODE STARTS HERE ==========
+        # Get LinkedIn profiles for brand attendees
+        print(f"  📱 Fetching LinkedIn profiles for brand attendees...")
+        brand_attendees_with_linkedin = get_brand_attendees_linkedin_info(
+            meeting_data.get('brand_attendees_info', []),
+            meeting_data['brand_name'],
+            gemini_llm_client
+        )
+        
+        # Replace the old brand attendees info with the new one that has LinkedIn URLs
+        meeting_data['brand_attendees_info'] = brand_attendees_with_linkedin
+        # ========== NEW CODE ENDS HERE ==========
 
         current_brand_name_for_meeting = meeting_data['brand_name']
         target_brand_industry = meeting_data['industry']
