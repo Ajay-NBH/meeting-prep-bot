@@ -311,6 +311,116 @@ def get_brand_attendees_linkedin_info(brand_attendees_list, brand_name, gemini_l
     
     return attendees_with_linkedin
 
+# ========== NEW FUNCTION 3: Find Potential Key Contacts ==========
+def find_potential_key_contacts(brand_name, gemini_llm_client):
+    """
+    Uses Gemini to find 2-3 senior marketing/brand contacts at a company.
+    Returns a list of contacts with verified LinkedIn URLs.
+    """
+    if not gemini_llm_client:
+        return []
+    
+    # Step 1: Ask LLM to find key people using Google Search
+    discovery_prompt = f"""
+Use Google Search to find 2-3 senior marketing or brand decision-makers at {brand_name} in India.
+
+Target roles (in priority order):
+1. Chief Marketing Officer (CMO)
+2. Head of Marketing / Marketing Head
+3. Brand Manager / Senior Brand Manager
+4. Head of Brand Partnerships
+5. Digital Marketing Head
+
+Search Strategy:
+- Use queries like: "{brand_name} CMO India"
+- Use queries like: "{brand_name} Marketing Head India"
+- Use queries like: "{brand_name} Brand Manager India"
+
+IMPORTANT RULES:
+1. Find REAL people who currently work at {brand_name}
+2. Focus on India-based or India-focused roles
+3. Return in this EXACT JSON format:
+{{
+  "contacts": [
+    {{"name": "Full Name", "title": "Job Title", "reasoning": "Why this person matters"}},
+    {{"name": "Full Name", "title": "Job Title", "reasoning": "Why this person matters"}}
+  ]
+}}
+
+4. If you cannot find anyone, return: {{"contacts": []}}
+5. ONLY return the JSON, no other text
+"""
+
+    grounding_tool = types.Tool(google_search=types.GoogleSearch())
+    config = types.GenerateContentConfig(
+        temperature=0.3,  # Low temperature for factual extraction
+        tools=[grounding_tool],
+        response_mime_type="application/json"  # Force JSON response
+    )
+    
+    try:
+        # First API call: Discover the people
+        response = gemini_llm_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=discovery_prompt,
+            config=config
+        )
+        
+        # Parse the JSON response
+        result_text = ""
+        for part in response.candidates[0].content.parts:
+            result_text += part.text
+        
+        result_text = result_text.strip()
+        
+        # Remove markdown code fences if present
+        result_text = re.sub(r'```json\s*|\s*```', '', result_text).strip()
+        
+        contacts_data = json.loads(result_text)
+        discovered_contacts = contacts_data.get("contacts", [])
+        
+        if not discovered_contacts:
+            print(f"    No key contacts found for {brand_name}")
+            return []
+        
+        print(f"    Found {len(discovered_contacts)} potential contacts for {brand_name}")
+        
+        # Step 2: For each discovered person, search for their LinkedIn
+        enriched_contacts = []
+        
+        for contact in discovered_contacts[:3]:  # Max 3 contacts
+            name = contact.get("name", "")
+            title = contact.get("title", "")
+            reasoning = contact.get("reasoning", "Key decision-maker")
+            
+            if not name:
+                continue
+            
+            print(f"      Searching LinkedIn for: {name} ({title})")
+            
+            # Use our existing LinkedIn search function
+            linkedin_url = search_linkedin_profile(name, brand_name, gemini_llm_client)
+            
+            enriched_contacts.append({
+                'name': name,
+                'title': title,
+                'reasoning': reasoning,
+                'linkedin_url': linkedin_url if linkedin_url else '(LinkedIn Not Verified)'
+            })
+            
+            # Rate limiting
+            time.sleep(1)
+        
+        return enriched_contacts
+        
+    except json.JSONDecodeError as e:
+        print(f"    Error parsing contacts JSON for {brand_name}: {e}")
+        print(f"    Raw response: {result_text[:200]}")
+        return []
+    except Exception as e:
+        print(f"    Error finding key contacts for {brand_name}: {e}")
+        return []
+
 class Industry(enum.Enum):
     FMCG = "FMCG"
     AUTOMOTIVE_AND_TRANSPORT = "Automotive & Transportation"
