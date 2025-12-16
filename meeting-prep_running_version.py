@@ -2351,7 +2351,23 @@ def main():
 
         # Step 5: Use the LLM to get the brand name and industry from the raw title
         print(f"  Using LLM to extract brand details from title: '{meeting_data['title']}'")
-        brand_details = get_brand_details_from_title_with_llm(gemini_llm_client, meeting_data['title'])
+        
+        # --- NEW SAFETY BLOCK FOR API QUOTA CRASHES ---
+        try:
+            brand_details = get_brand_details_from_title_with_llm(gemini_llm_client, meeting_data['title'])
+            # Add a pause after this call too
+            time.sleep(5) 
+        except Exception as e:
+            print(f"  CRITICAL API ERROR for '{meeting_data['title']}': {e}")
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                print("  ⚠️ Quota Exceeded. Pausing script for 60 seconds before trying NEXT meeting...")
+                time.sleep(60)
+                # Skip this meeting, try the next one
+                continue
+            else:
+                # If it's another error, try to continue with unknown brand
+                brand_details = {"brand_name": "Unknown Brand", "industry": "Unknown"}
+        # --- END SAFETY BLOCK ---
 
         # Step 6: Handle ambiguous result from the LLM
         if brand_details['brand_name'] == 'Unknown Brand' or brand_details['brand_name'].lower() == 'unknown':
