@@ -2387,6 +2387,7 @@ def main():
             continue
 
         # Step 7: Merge the successful LLM results into the main meeting_data dictionary
+       
        meeting_data.update(brand_details)
         
         # ========== NEW CODE STARTS HERE ==========
@@ -2401,6 +2402,18 @@ def main():
         # Replace the old brand attendees info with the new one that has LinkedIn URLs
         meeting_data['brand_attendees_info'] = brand_attendees_with_linkedin
         # ========== NEW CODE ENDS HERE ==========
+
+        # ========== NEW CODE FOR KEY CONTACTS STARTS HERE ==========
+        # Find potential key contacts (people NOT in the meeting)
+        print(f"  🎯 Finding potential key contacts at {meeting_data['brand_name']}...")
+        potential_key_contacts = find_potential_key_contacts(
+            meeting_data['brand_name'],
+            gemini_llm_client
+        )
+        
+        # Add to meeting data
+        meeting_data['potential_key_contacts'] = potential_key_contacts
+        # ========== NEW CODE FOR KEY CONTACTS ENDS HERE ==========
 
         current_brand_name_for_meeting = meeting_data['brand_name']
         target_brand_industry = meeting_data['industry']
