@@ -955,33 +955,52 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 industry_col_idx = -1 # NEW: For reading "Industry" column from sheet                
                 
 
+                # 1. HEADER DETECTION (Brand, Industry, AND Date/Timestamp)
                 if header_values:
                     try:
                         lower_header = [str(h).strip().lower() for h in header_values]
                         brand_name_col_idx = lower_header.index("brand name")
                         industry_col_idx = lower_header.index("industry") 
                     except ValueError:
-                        # ... (keep your existing error handling here) ...
-                        continue 
+                        # If brand name is missing, we can't do much, so skip this sheet
+                        if brand_name_col_idx == -1: continue 
 
-                # === IMPROVEMENT: SEPARATE DATA AND REVERSE ===
-                # We slice [1:] to assume row 0 is header, then reverse to get most recent (bottom) rows first
+                    # Detect the Date/Year/Timestamp column
+                    # This logic handles "Timestamp", "Campaign start Date", "Date", "Year", etc.
+                    year_col_idx = -1
+                    for idx, h_name in enumerate(lower_header):
+                        if "year" in h_name or "date" in h_name or "timestamp" in h_name:
+                            year_col_idx = idx
+                            break
+
+                # 2. READ FROM BOTTOM (Latest First)
+                # Slice [1:] removes the header row so we don't process it as data
                 data_rows = file_data_object[1:] if len(file_data_object) > 1 else []
                 
+                # We reverse the list to start reading from the very bottom (2025 data)
                 for row_info in reversed(data_rows):
                     if not isinstance(row_info, dict) or 'values' not in row_info or not row_info['values']: continue
                     
-                    # Double check we aren't processing the header if it somehow got in
+                    # Double check we aren't processing the header
                     if row_info.get("values") == header_values: 
                         continue
                     
-                    # ... (The rest of your existing processing logic matches here) ...
-                    
                     row_values = row_info['values']
+                    
+                    # 3. STRICT FILTER: REJECT 2023 and 2024
+                    # This logic works for "12/16/2024" AND "November 2024"
+                    if year_col_idx != -1 and len(row_values) > year_col_idx:
+                        row_date_val = str(row_values[year_col_idx]).strip()
+                        
+                        # If the date cell contains "2023" or "2024", we SKIP this row entirely.
+                        # The script will effectively ignore them and keep moving up to find 2025.
+                        if "2023" in row_date_val or "2024" in row_date_val:
+                            continue 
+
                     is_relevant_row = False
                     relevance_reason = ""
                     row_brand_name = ""
-                    row_campaign_industry_from_sheet = "" # NEW
+                    row_campaign_industry_from_sheet = "" 
 
 
                     # Attempt to extract Brand Name from the current row    
@@ -996,27 +1015,20 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                         row_campaign_industry_from_sheet = str(row_values[industry_col_idx]).strip()
 
                     # Relevance check based on industry
-                    if not is_relevant_row and target_brand_industry != "Unknown" and row_campaign_industry_from_sheet: # Check if sheet industry is not empty    
+                    if not is_relevant_row and target_brand_industry != "Unknown" and row_campaign_industry_from_sheet:    
                        if row_campaign_industry_from_sheet.lower() == target_brand_industry.lower():
                                is_relevant_row = True
                                relevance_reason = f"Industry match for '{target_brand_industry}' in row industry '{row_campaign_industry_from_sheet}'."
 
-
-                    # ROW DEBUG print statements would go here, after all checks
-                    #print(f"    ROW DEBUG: TargetBrand='{current_target_brand_name.lower()}', RowBrand='{row_brand_name.lower()}'")
-                    #print(f"    ROW DEBUG: TargetIndustry='{target_brand_industry.lower()}', RowSheetIndustry='{row_campaign_industry_from_sheet.lower()}'")
-                    #print(f"    ROW DEBUG: is_relevant_row after all checks: {is_relevant_row}, Reason: '{relevance_reason}'")
-
-
                     if is_relevant_row and rows_added_count < MAX_CAMPAIGN_ROWS_TO_INCLUDE:
                         print(f"      MATCH FOUND for row {row_info.get('row_index')}: {relevance_reason}")
-                        # ... your existing logic to add to relevant_rows_for_llm ...
+                        
                         row_details = []
-                        for h_idx, h_val in enumerate(header_values): # Use header_values from the top of this file's processing block
+                        for h_idx, h_val in enumerate(header_values): 
                             cell_val = str(row_values[h_idx]) if len(row_values) > h_idx else "N/A"
-                            if cell_val.strip() and cell_val != "N/A": # Only add if there's a value
+                            if cell_val.strip() and cell_val != "N/A": 
                                 row_details.append(f"{h_val}: {cell_val.strip()}")
-                        if row_details: # Only add if we have some details  
+                        if row_details: 
                             relevant_rows_for_llm.append(f"### Campaign Row {row_info.get('row_index', 'N/A')} (Relevance: {relevance_reason}):\n" + ", ".join(row_details) + "\n---\n")
                         rows_added_count +=1
                 
