@@ -1145,117 +1145,85 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 final_context_parts_for_llm.append(f"## Case Studies (from PDF: '{file_name}'):\nNo text data extracted or unexpected format.\n")
             continue # Move to next file
 
-        # 3. & 4. & 5. Physical, Digital & NEW Latest Campaigns
+        # 3. & 4. & 5. Physical, Digital & Latest Campaigns (PRIORITY FALLBACK VERSION)
         elif (
             (FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in file_name.lower() or 
              FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in file_name.lower() or 
              FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in file_name.lower())
             and mime_type == 'application/vnd.google-apps.spreadsheet'
         ):
-            
-            #rows_data_from_sheet = read_gdrive_file_content_with_slides(drive_service, sheets_service, file_id, file_name, mime_type)
-            
             if isinstance(file_data_object, list) and file_data_object:
-                # ... (the rest of your detailed logic for processing campaign GSheet rows) ...
-                # ... (finding brand name column, iterating rows, checking direct match, checking industry match, etc.) ...
-                relevant_rows_for_llm = [f"## Historical Campaign Data (from '{file_name}'):\n"]
-                rows_added_count = 0
-                MAX_CAMPAIGN_ROWS_TO_INCLUDE = 15 
-
-                # Assuming first item in file_data_object (if it's a list of rows) contains the header
-                first_row_dict = file_data_object[0] if isinstance(file_data_object[0], dict) else {}
-                header_values = first_row_dict.get("header", [])
+                final_output_list = [f"## Historical Campaign Data (from '{file_name}'):\n"]
                 
-                brand_name_col_idx = -1
-                industry_col_idx = -1 # NEW: For reading "Industry" column from sheet                
-                
+                # Buckets to ensure 2025 always appears before 2024
+                bucket_2025 = []
+                bucket_2024 = []
+                MAX_ROWS = 15 
 
-                # 1. HEADER DETECTION (Brand, Industry, AND Date/Timestamp)
+                header_values = file_data_object[0].get("header", []) if isinstance(file_data_object[0], dict) else []
+                
+                brand_col = -1
+                ind_col = -1 
+                date_col = -1
+
+                # Step 1: Efficient Header Mapping
                 if header_values:
-                    try:
-                        lower_header = [str(h).strip().lower() for h in header_values]
-                        brand_name_col_idx = lower_header.index("brand name")
-                        industry_col_idx = lower_header.index("industry") 
-                    except ValueError:
-                        # If brand name is missing, we can't do much, so skip this sheet
-                        if brand_name_col_idx == -1: continue 
+                    lower_h = [str(h).strip().lower() for h in header_values]
+                    for idx, h in enumerate(lower_h):
+                        if "brand" in h: brand_col = idx
+                        if "industry" in h or "category" in h: ind_col = idx
+                        if any(x in h for x in ["year", "date", "timestamp"]): date_col = idx
 
-                    # Detect the Date/Year/Timestamp column
-                    # This logic handles "Timestamp", "Campaign start Date", "Date", "Year", etc.
-                    year_col_idx = -1
-                    for idx, h_name in enumerate(lower_header):
-                        if "year" in h_name or "date" in h_name or "timestamp" in h_name:
-                            year_col_idx = idx
-                            break
+                if brand_col == -1: continue # Cannot process without brand column
 
-                # 2. READ FROM BOTTOM (Latest First)
-                # Slice [1:] removes the header row so we don't process it as data
+                # Step 2: Single Pass Data Extraction
                 data_rows = file_data_object[1:] if len(file_data_object) > 1 else []
                 
-                # We reverse the list to start reading from the very bottom (2025 data)
                 for row_info in reversed(data_rows):
-                    if not isinstance(row_info, dict) or 'values' not in row_info or not row_info['values']: continue
+                    vals = row_info.get('values', [])
+                    if not vals or not any(str(v).strip() for v in vals): continue
                     
-                    # Double check we aren't processing the header
-                    if row_info.get("values") == header_values: 
-                        continue
-                    
-                    row_values = row_info['values']
-                    
-                    # 3. STRICT FILTER: REJECT 2023 and 2024
-                    # This logic works for "12/16/2024" AND "November 2024"
-                    if year_col_idx != -1 and len(row_values) > year_col_idx:
-                        row_date_val = str(row_values[year_col_idx]).strip()
+                    row_brand = str(vals[brand_col]).strip() if len(vals) > brand_col else ""
+                    row_ind = str(vals[ind_col]).strip() if ind_col != -1 and len(vals) > ind_col else ""
+                    row_date = str(vals[date_col]).strip() if date_col != -1 and len(vals) > date_col else ""
+
+                    # Logic: Is it relevant to this meeting?
+                    is_match = False
+                    reason = ""
+                    if current_target_brand_name.lower() in row_brand.lower():
+                        is_match = True
+                        reason = "Direct Brand Match"
+                    elif target_brand_industry != "Unknown" and row_ind.lower() == target_brand_industry.lower():
+                        is_match = True
+                        reason = f"Industry Match ({target_brand_industry})"
+
+                    if is_match:
+                        # Construct a clean summary of the row for the LLM
+                        row_summary = []
+                        for h_idx, h_name in enumerate(header_values):
+                            cell = str(vals[h_idx]).strip() if len(vals) > h_idx else ""
+                            if cell and cell.lower() != "n/a":
+                                row_summary.append(f"{h_name}: {cell}")
                         
-                        # If the date cell contains "2023" or "2024", we SKIP this row entirely.
-                        # The script will effectively ignore them and keep moving up to find 2025.
-                        if "2023" in row_date_val or "2024" in row_date_val:
-                            continue 
-
-                    is_relevant_row = False
-                    relevance_reason = ""
-                    row_brand_name = ""
-                    row_campaign_industry_from_sheet = "" 
-
-
-                    # Attempt to extract Brand Name from the current row    
-                    if brand_name_col_idx != -1 and len(row_values) > brand_name_col_idx and row_values[brand_name_col_idx] is not None:
-                        row_brand_name = str(row_values[brand_name_col_idx]).strip()
-                        if current_target_brand_name.lower() == row_brand_name.lower():
-                            is_relevant_row = True
-                            relevance_reason = f"Direct match for '{current_target_brand_name}'."
-                    
-                    # Attempt to extract Industry from the current row
-                    if industry_col_idx != -1 and len(row_values) > industry_col_idx and row_values[industry_col_idx] is not None:
-                        row_campaign_industry_from_sheet = str(row_values[industry_col_idx]).strip()
-
-                    # Relevance check based on industry
-                    if not is_relevant_row and target_brand_industry != "Unknown" and row_campaign_industry_from_sheet:    
-                       if row_campaign_industry_from_sheet.lower() == target_brand_industry.lower():
-                               is_relevant_row = True
-                               relevance_reason = f"Industry match for '{target_brand_industry}' in row industry '{row_campaign_industry_from_sheet}'."
-
-                    if is_relevant_row and rows_added_count < MAX_CAMPAIGN_ROWS_TO_INCLUDE:
-                        print(f"      MATCH FOUND for row {row_info.get('row_index')}: {relevance_reason}")
+                        formatted_entry = f"### Campaign ({reason} - {row_date}):\n" + ", ".join(row_summary) + "\n---\n"
                         
-                        row_details = []
-                        for h_idx, h_val in enumerate(header_values): 
-                            cell_val = str(row_values[h_idx]) if len(row_values) > h_idx else "N/A"
-                            if cell_val.strip() and cell_val != "N/A": 
-                                row_details.append(f"{h_val}: {cell_val.strip()}")
-                        if row_details: 
-                            relevant_rows_for_llm.append(f"### Campaign Row {row_info.get('row_index', 'N/A')} (Relevance: {relevance_reason}):\n" + ", ".join(row_details) + "\n---\n")
-                        rows_added_count +=1
+                        # Step 3: Sort into Buckets (Prioritizing 2025)
+                        if "2025" in row_date:
+                            bucket_2025.append(formatted_entry)
+                        elif "2024" in row_date:
+                            bucket_2024.append(formatted_entry)
+
+                # Step 4: Concatenate buckets (2025 first, then fill with 2024)
+                final_selection = (bucket_2025 + bucket_2024)[:MAX_ROWS]
                 
-                if rows_added_count > 0:
-                    final_context_parts_for_llm.append("".join(relevant_rows_for_llm))
+                if final_selection:
+                    final_output_list.extend(final_selection)
+                    final_context_parts_for_llm.append("".join(final_output_list))
                 else:
-                    final_context_parts_for_llm.append(f"## Historical Campaign Data (from '{file_name}'):\nNo campaigns found directly matching '{current_target_brand_name}' or its inferred industry '{target_brand_industry}'.\n")
+                    final_context_parts_for_llm.append(f"## Historical Campaign Data (from '{file_name}'):\nNo relevant 2024 or 2025 campaigns found.\n")
 
             elif isinstance(file_data_object, str): 
-                final_context_parts_for_llm.append(f"## Note on '{file_name}':\nError processing campaign data: {file_data_object}\n")
-            else: 
-                 final_context_parts_for_llm.append(f"## Historical Campaign Data (from '{file_name}'):\nNo data rows found or file not in expected sheet format.\n")
+                final_context_parts_for_llm.append(f"## Error in '{file_name}': {file_data_object}\n")
             continue
 
         # 5. com data _ Cross vertical Services_ West (GSheet - Database Numbers/Leads - MULTI-TAB)
