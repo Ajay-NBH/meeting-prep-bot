@@ -1158,7 +1158,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                     final_sheet_selection = list_2024[:5] 
 
                 if final_sheet_selection:
-                    final_context_parts_for_llm.append(f"## RELEVANT CASE STUDIES FROM {file_name}:\n" + "".join(final_sheet_selection))
+                    final_context_parts_for_llm.append(f"## Historical Campaign Data (Source: {file_name}):\n" + "".join(final_sheet_selection))
             
             continue
 
