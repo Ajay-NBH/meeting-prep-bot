@@ -1075,103 +1075,225 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 final_context_parts_for_llm.append(f"## Case Studies (from PDF: '{file_name}'):\nNo text data extracted or unexpected format.\n")
             continue # Move to next file
 
-        # 3. & 4. & 5. Physical, Digital & Latest Campaigns (STRICT KEYWORD & 2025 PRIORITY)
-        elif (
-            (FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in file_name.lower() or 
-             FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in file_name.lower() or 
-             FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in file_name.lower())
-            and mime_type == 'application/vnd.google-apps.spreadsheet'
-        ):
-            # STRICT KEYWORD BRIDGE: This maps the inferred industry to actual keywords found in your live sheets.
-            STRICT_INDUSTRY_MAP = {
-                "FMCG": ["fmcg", "consumer", "goods", "staples", "packaged", "textiles"],
-                "Automotive & Transportation": ["automotive", "car", "bike", "ev", "vehicle", "transport"],
-                "Food & Beverage": ["food", "beverage", "f&b", "dairy", "snacks", "drinks", "restaurant", "hospitality"],
-                "Jewellery": ["jewel", "gold", "diamond", "ornament"], # 'jewel' matches Jewelry and Jewellery
-                "Apparel & Fashion": ["apparel", "fashion", "clothing", "wear", "shoes", "textiles"],
-                "Finance & Fintech": ["finance", "fintech", "bank", "insurance", "loan", "trading"],
-                "Beauty & Personal Care": ["beauty", "cosmetic", "skincare", "grooming", "wellness"],
-                "Real Estate & Construction": ["real estate", "builder", "construction", "property", "interior design", "interior"],
-                "Healthcare": ["healthcare", "hospital", "medical", "pharma", "wellness", "clinic"],
-                "E-Commerce": ["e-commerce", "ecommerce", "online", "marketplace"],
-                "Retail": ["retail", "supermarket", "mall", "store", "furniture"],
-                "OTT": ["ott", "streaming", "entertainment", "video"],
-                "Marketing, Advertising & Media": ["advertising", "marketing", "events", "entertainment", "media"],
-                "Education & Training": ["education", "school", "college", "training", "admissions"],
-                "Home Goods & Electronics": ["furniture", "interior", "home services", "electronics", "appliances"],
-                "Hospitality & Travel": ["hospitality", "travel", "tourism", "hotel", "resort"],
-                "Membership & Local Services": ["home services", "local", "membership", "community"]
-            }
+        # 3. & 4. Physical and Digital Live Sheets (STRICT KEYWORD & 2025 PRIORITY)
+elif (
+    (FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in file_name.lower() or 
+     FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in file_name.lower())
+    and mime_type == 'application/vnd.google-apps.spreadsheet'
+):
+    # STRICT KEYWORD BRIDGE
+    STRICT_INDUSTRY_MAP = {
+        "FMCG": ["fmcg", "consumer", "goods", "staples", "packaged", "textiles"],
+        "Automotive & Transportation": ["automotive", "car", "bike", "ev", "vehicle", "transport"],
+        "Food & Beverage": ["food", "beverage", "f&b", "dairy", "snacks", "drinks", "restaurant", "hospitality"],
+        "Jewellery": ["jewel", "gold", "diamond", "ornament"],
+        "Apparel & Fashion": ["apparel", "fashion", "clothing", "wear", "shoes", "textiles"],
+        "Finance & Fintech": ["finance", "fintech", "bank", "insurance", "loan", "trading"],
+        "Beauty & Personal Care": ["beauty", "cosmetic", "skincare", "grooming", "wellness"],
+        "Real Estate & Construction": ["real estate", "builder", "construction", "property", "interior design", "interior"],
+        "Healthcare": ["healthcare", "hospital", "medical", "pharma", "wellness", "clinic"],
+        "E-Commerce": ["e-commerce", "ecommerce", "online", "marketplace"],
+        "Retail": ["retail", "supermarket", "mall", "store", "furniture"],
+        "OTT": ["ott", "streaming", "entertainment", "video"],
+        "Marketing, Advertising & Media": ["advertising", "marketing", "events", "entertainment", "media"],
+        "Education & Training": ["education", "school", "college", "training", "admissions"],
+        "Home Goods & Electronics": ["furniture", "interior", "home services", "electronics", "appliances"],
+        "Hospitality & Travel": ["hospitality", "travel", "tourism", "hotel", "resort"],
+        "Membership & Local Services": ["home services", "local", "membership", "community"]
+    }
 
-            if isinstance(file_data_object, list) and file_data_object:
-                header_values = file_data_object[0].get("header", []) if isinstance(file_data_object[0], dict) else []
-                brand_col, ind_col, date_col = -1, -1, -1
+    if isinstance(file_data_object, list) and file_data_object:
+        header_values = file_data_object[0].get("header", []) if isinstance(file_data_object[0], dict) else []
+        brand_col, ind_col, date_col = -1, -1, -1
 
-              # --- IMPROVED COLUMN DETECTION ---
-                brand_col, ind_col, date_col = -1, -1, -1 # Initialize to -1
+        if header_values:
+            lower_h = [str(h).strip().lower() for h in header_values]
+            for idx, h in enumerate(lower_h):
+                if "brand" in h: 
+                    brand_col = idx
+                if any(x in h for x in ["industry", "category", "vertical", "segment"]): 
+                    ind_col = idx
+                if any(x in h for x in ["year", "date", "timestamp", "month"]): 
+                    date_col = idx
 
-                if header_values:
-                    lower_h = [str(h).strip().lower() for h in header_values]
-                    for idx, h in enumerate(lower_h):
-                        # Identify Brand Column
-                        if "brand" in h: 
-                            brand_col = idx
-                        
-                        # Identify Industry Column (Added more keywords for Live Sheets)
-                        if any(x in h for x in ["industry", "category", "vertical", "segment"]): 
-                            ind_col = idx
-                        
-                        # Identify Date Column (Added 'month' to catch Live Sheet variations)
-                        if any(x in h for x in ["year", "date", "timestamp", "month"]): 
-                            date_col = idx
-
-                if brand_col == -1: continue
-
-                list_2025 = []
-                list_2024 = []
-                keywords = STRICT_INDUSTRY_MAP.get(target_brand_industry, [])
-                target_brand_clean = current_target_brand_name.lower().strip()
-
-                data_rows = file_data_object[1:] if len(file_data_object) > 1 else []
-                for row_info in reversed(data_rows):
-                    vals = row_info.get('values', [])
-                    if not vals or not any(str(v).strip() for v in vals): continue
-                    
-                    row_brand = str(vals[brand_col]).strip().lower() if len(vals) > brand_col else ""
-                    row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
-                    row_date = str(vals[date_col]).strip() if date_col != -1 and len(vals) > date_col else ""
-
-                    is_match = False
-                    # 1. Check direct brand name match
-                    if target_brand_clean in row_brand or row_brand in target_brand_clean:
-                        is_match = True 
-                    # 2. Check strict keyword match for industry
-                    elif keywords and any(word in row_ind for word in keywords):
-                        is_match = True 
-
-                    if is_match:
-                        row_items = [f"{header_values[i]}: {str(vals[i]).strip()}" for i in range(len(header_values)) 
-                                     if i < len(vals) and str(vals[i]).strip() and str(vals[i]).lower() != "n/a"]
-                        entry = f"### Source: {file_name}\n" + " | ".join(row_items) + "\n\n"
-                        
-                        if "2025" in row_date:
-                            list_2025.append(entry)
-                        elif "2024" in row_date:
-                            list_2024.append(entry)
-
-                # STRICT 2025 PRIORITY LOGIC
-                final_sheet_selection = []
-                if list_2025:
-                    # If any 2025 data found, ONLY use 2025.
-                    final_sheet_selection = list_2025[:10] 
-                else:
-                    # Fallback to 2024 only if 2025 is empty.
-                    final_sheet_selection = list_2024[:5] 
-
-                if final_sheet_selection:
-                    final_context_parts_for_llm.append(f"## Historical Campaign Data (Source: {file_name}):\n" + "".join(final_sheet_selection))
-            
+        if brand_col == -1: 
+            print(f"  WARNING: No 'brand' column found in {file_name}. Skipping.")
             continue
+
+        list_2025 = []
+        list_2024 = []
+        keywords = STRICT_INDUSTRY_MAP.get(target_brand_industry, [])
+        target_brand_clean = current_target_brand_name.lower().strip()
+
+        # CRITICAL: Read from BOTTOM to TOP since 2025 data is appended at bottom
+        data_rows = file_data_object[1:] if len(file_data_object) > 1 else []
+        
+        print(f"  Processing {file_name}: Total rows = {len(data_rows)}")
+        
+        # Process in REVERSE order (bottom-up) to get latest data first
+        for row_info in reversed(data_rows):
+            vals = row_info.get('values', [])
+            if not vals or not any(str(v).strip() for v in vals): 
+                continue
+            
+            row_brand = str(vals[brand_col]).strip().lower() if len(vals) > brand_col else ""
+            row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
+            row_date = str(vals[date_col]).strip() if date_col != -1 and len(vals) > date_col else ""
+
+            is_match = False
+            # 1. Check direct brand name match
+            if target_brand_clean in row_brand or row_brand in target_brand_clean:
+                is_match = True 
+            # 2. Check strict keyword match for industry
+            elif keywords and any(word in row_ind for word in keywords):
+                is_match = True 
+
+            if is_match:
+                row_items = [f"{header_values[i]}: {str(vals[i]).strip()}" 
+                            for i in range(len(header_values)) 
+                            if i < len(vals) and str(vals[i]).strip() and str(vals[i]).lower() != "n/a"]
+                entry = " | ".join(row_items) + "\n"
+                
+                if "2025" in row_date:
+                    list_2025.append(entry)
+                elif "2024" in row_date:
+                    list_2024.append(entry)
+
+        # STRICT 2025 PRIORITY LOGIC
+        final_sheet_selection = []
+        if list_2025:
+            final_sheet_selection = list_2025[:8]  # Top 8 from 2025
+            print(f"  ✓ Found {len(list_2025)} matching 2025 campaigns in {file_name}, using top 8")
+        else:
+            final_sheet_selection = list_2024[:5]  # Fallback to 2024
+            print(f"  ⚠ No 2025 data. Found {len(list_2024)} matching 2024 campaigns in {file_name}, using top 5")
+
+        # === CRITICAL FIX: USE DISTINCT HEADER LABELS ===
+        if final_sheet_selection:
+            # Determine campaign type based on filename
+            if "physical" in file_name.lower():
+                campaign_type = "PHYSICAL CAMPAIGNS (Live Sheet)"
+                header_marker = "## NBH PHYSICAL CAMPAIGN EXAMPLES"
+            elif "digital" in file_name.lower():
+                campaign_type = "DIGITAL CAMPAIGNS (Live Sheet)"
+                header_marker = "## NBH DIGITAL CAMPAIGN EXAMPLES"
+            
+            context_block = f"{header_marker}\n"
+            context_block += f"**Source:** {file_name}\n"
+            context_block += f"**Campaign Type:** {campaign_type}\n"
+            context_block += f"**Data Year:** {'2025' if list_2025 else '2024'}\n\n"
+            
+            for idx, campaign_entry in enumerate(final_sheet_selection, 1):
+                context_block += f"### Campaign {idx}\n{campaign_entry}\n"
+            
+            context_block += f"---END OF {campaign_type}---\n\n"
+            
+            final_context_parts_for_llm.append(context_block)
+            print(f"  ✓ Added {len(final_sheet_selection)} {campaign_type} to LLM context")
+        else:
+            print(f"  ⚠ No matching campaigns found in {file_name} for brand/industry")
+    
+    continue
+
+# 5. Consolidated Case Studies Sheet (ONLY AS FALLBACK/REFERENCE)
+elif (
+    FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in file_name.lower() and 
+    mime_type == 'application/vnd.google-apps.spreadsheet'
+):
+    # Same processing logic but with different header
+    STRICT_INDUSTRY_MAP = {
+        "FMCG": ["fmcg", "consumer", "goods", "staples", "packaged", "textiles"],
+        "Automotive & Transportation": ["automotive", "car", "bike", "ev", "vehicle", "transport"],
+        "Food & Beverage": ["food", "beverage", "f&b", "dairy", "snacks", "drinks", "restaurant", "hospitality"],
+        "Jewellery": ["jewel", "gold", "diamond", "ornament"],
+        "Apparel & Fashion": ["apparel", "fashion", "clothing", "wear", "shoes", "textiles"],
+        "Finance & Fintech": ["finance", "fintech", "bank", "insurance", "loan", "trading"],
+        "Beauty & Personal Care": ["beauty", "cosmetic", "skincare", "grooming", "wellness"],
+        "Real Estate & Construction": ["real estate", "builder", "construction", "property", "interior design", "interior"],
+        "Healthcare": ["healthcare", "hospital", "medical", "pharma", "wellness", "clinic"],
+        "E-Commerce": ["e-commerce", "ecommerce", "online", "marketplace"],
+        "Retail": ["retail", "supermarket", "mall", "store", "furniture"],
+        "OTT": ["ott", "streaming", "entertainment", "video"],
+        "Marketing, Advertising & Media": ["advertising", "marketing", "events", "entertainment", "media"],
+        "Education & Training": ["education", "school", "college", "training", "admissions"],
+        "Home Goods & Electronics": ["furniture", "interior", "home services", "electronics", "appliances"],
+        "Hospitality & Travel": ["hospitality", "travel", "tourism", "hotel", "resort"],
+        "Membership & Local Services": ["home services", "local", "membership", "community"]
+    }
+
+    if isinstance(file_data_object, list) and file_data_object:
+        header_values = file_data_object[0].get("header", []) if isinstance(file_data_object[0], dict) else []
+        brand_col, ind_col, date_col = -1, -1, -1
+
+        if header_values:
+            lower_h = [str(h).strip().lower() for h in header_values]
+            for idx, h in enumerate(lower_h):
+                if "brand" in h: 
+                    brand_col = idx
+                if any(x in h for x in ["industry", "category", "vertical", "segment"]): 
+                    ind_col = idx
+                if any(x in h for x in ["year", "date", "timestamp", "month"]): 
+                    date_col = idx
+
+        if brand_col == -1: 
+            print(f"  WARNING: No 'brand' column found in {file_name}. Skipping.")
+            continue
+
+        list_2025 = []
+        list_2024 = []
+        keywords = STRICT_INDUSTRY_MAP.get(target_brand_industry, [])
+        target_brand_clean = current_target_brand_name.lower().strip()
+
+        data_rows = file_data_object[1:] if len(file_data_object) > 1 else []
+        print(f"  Processing {file_name}: Total rows = {len(data_rows)}")
+        
+        for row_info in reversed(data_rows):
+            vals = row_info.get('values', [])
+            if not vals or not any(str(v).strip() for v in vals): continue
+            
+            row_brand = str(vals[brand_col]).strip().lower() if len(vals) > brand_col else ""
+            row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
+            row_date = str(vals[date_col]).strip() if date_col != -1 and len(vals) > date_col else ""
+
+            is_match = False
+            if target_brand_clean in row_brand or row_brand in target_brand_clean:
+                is_match = True 
+            elif keywords and any(word in row_ind for word in keywords):
+                is_match = True 
+
+            if is_match:
+                row_items = [f"{header_values[i]}: {str(vals[i]).strip()}" 
+                            for i in range(len(header_values)) 
+                            if i < len(vals) and str(vals[i]).strip() and str(vals[i]).lower() != "n/a"]
+                entry = " | ".join(row_items) + "\n"
+                
+                if "2025" in row_date:
+                    list_2025.append(entry)
+                elif "2024" in row_date:
+                    list_2024.append(entry)
+
+        final_sheet_selection = []
+        if list_2025:
+            final_sheet_selection = list_2025[:6]
+            print(f"  ✓ Found {len(list_2025)} matching 2025 campaigns in Consolidated sheet, using top 6")
+        else:
+            final_sheet_selection = list_2024[:4]
+            print(f"  ⚠ No 2025 data in Consolidated. Found {len(list_2024)} 2024 campaigns, using top 4")
+
+        if final_sheet_selection:
+            context_block = "## ADDITIONAL CASE STUDY REFERENCE (Consolidated Sheet)\n"
+            context_block += f"**Source:** {file_name}\n"
+            context_block += "**Note:** Use these ONLY if Physical/Digital sheets lack sufficient examples.\n\n"
+            
+            for idx, campaign_entry in enumerate(final_sheet_selection, 1):
+                context_block += f"### Reference Campaign {idx}\n{campaign_entry}\n"
+            
+            context_block += "---END OF CONSOLIDATED REFERENCE---\n\n"
+            
+            final_context_parts_for_llm.append(context_block)
+            print(f"  ✓ Added {len(final_sheet_selection)} consolidated case studies as reference")
+    
+    continue
 
         # 5. com data _ Cross vertical Services_ West (GSheet - Database Numbers/Leads - MULTI-TAB)
         elif FILE_NAME_COM_DATA_GSHEET.lower() in file_name.lower() and mime_type == 'application/vnd.google-apps.spreadsheet':
