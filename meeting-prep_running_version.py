@@ -1795,7 +1795,7 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
     # Configure generation settings
     config = types.GenerateContentConfig(
     # sampling parameters (formerly generation_config dict)
-    temperature=0.7,
+    temperature=0.0,
     top_p=0.95,
     top_k=40,
 
