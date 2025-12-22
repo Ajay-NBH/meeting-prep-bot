@@ -909,7 +909,7 @@ def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, 
         return "Error: Gemini model not available for summarization."
 
     prompt = (
-        f"Summarize the following content from the file '{file_name}' (type: {mime_type}) in 50-70 concise bullet points, "
+        f"Summarize the following content from the file '{file_name}' (type: {mime_type}) in 5-10 concise bullet points, "
         "focusing on key facts, data, or insights that would be useful for a marketing/sales meeting. "
         "Do not include generic statements. If the content is not relevant, say 'No relevant content found.'\n\n"
         f"---\n{file_content}\n---"
