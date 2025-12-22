@@ -210,67 +210,34 @@ def find_common_attendees(attendee_set_1_raw, attendee_set_2_raw):
 # ========== NEW FUNCTION 1: Search for LinkedIn Profile ==========
 def search_linkedin_profile(person_name, company_name, gemini_llm_client):
     """
-    Uses Gemini's Google Search to find a LinkedIn URL.
-    Returns the verified LinkedIn URL or None.
+    Uses Gemini's Google Search to find a LinkedIn URL with improved query logic.
     """
     if not gemini_llm_client:
         return None
     
-    # Create search query
-    search_query = f'site:in.linkedin.com/in/ "{person_name}" "{company_name}"'
-    
-    # Create prompt for Gemini
-    search_prompt = f"""
-Use Google Search to find the LinkedIn profile for:
-- Name: {person_name}
-- Company: {company_name}
+    # Simpler, broader search prompt that allows the LLM to find the best match
+    search_prompt = f"Find the official LinkedIn profile URL for {person_name} who works at {company_name} in India. Search for their current role. Return ONLY the URL."
 
-Search Query: {search_query}
-
-IMPORTANT RULES:
-1. Search for this exact person at this exact company
-2. If you find their LinkedIn profile URL, return ONLY the URL
-3. The URL format should be: https://in.linkedin.com/in/[something]
-4. If you cannot find it, return exactly: NOT_FOUND
-5. Do not explain, just return the URL or NOT_FOUND
-
-Your response:"""
-
-    # Setup Google Search
     grounding_tool = types.Tool(google_search=types.GoogleSearch())
     config = types.GenerateContentConfig(
-        temperature=0.1,
+        temperature=0.0,
         tools=[grounding_tool]
     )
     
     try:
-        # Call Gemini with search capability
         response = gemini_llm_client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash", # Use 2.0 for better search grounding
             contents=search_prompt,
             config=config
         )
         
-        # Get the text response
-        result_text = ""
-        for part in response.candidates[0].content.parts:
-            result_text += part.text
+        result_text = response.text.strip()
         
-        result_text = result_text.strip()
-        
-        # Check if not found
-        if "NOT_FOUND" in result_text or not result_text:
-            return None
-        
-        # Extract URL using pattern matching
-        import re
-        url_pattern = r'https?://(?:www\.)?(?:in\.)?linkedin\.com/in/[a-zA-Z0-9_-]+'
+        # Flexible URL pattern matching for all LinkedIn variations
+        url_pattern = r'https?://(?:[a-z]+\.)?linkedin\.com/in/[a-zA-Z0-9%_-]+'
         urls = re.findall(url_pattern, result_text)
         
-        if urls:
-            return urls[0]
-        
-        return None
+        return urls[0] if urls else None
         
     except Exception as e:
         print(f"  Error searching LinkedIn for {person_name}: {e}")
@@ -312,114 +279,77 @@ def get_brand_attendees_linkedin_info(brand_attendees_list, brand_name, gemini_l
     
     return attendees_with_linkedin
 
-# ========== NEW FUNCTION 3: Find Potential Key Contacts ==========
+# ========== NEW FUNCTION 3: Find Potential Key Contacts (FIXED) ==========
 def find_potential_key_contacts(brand_name, gemini_llm_client):
     """
-    Uses Gemini to find 2-3 senior marketing/brand contacts at a company.
-    Returns a list of contacts with verified LinkedIn URLs.
+    Finds 2-3 current Brand Managers or Program Managers at the company in India.
     """
     if not gemini_llm_client:
         return []
     
-    # Step 1: Ask LLM to find key people using Google Search
     discovery_prompt = f"""
-Use Google Search to find 2-3 senior marketing or brand decision-makers at {brand_name} in India.
+Use Google Search to find 2-3 current marketing or brand professionals at {brand_name} India.
 
-Target roles (in priority order):
-1. Chief Marketing Officer (CMO)
-2. Head of Marketing / Marketing Head
-3. Brand Manager / Senior Brand Manager
-4. Head of Brand Partnerships
-5. Digital Marketing Head
+Target roles (Priority order):
+1. Brand Manager / Senior Brand Manager
+2. Marketing Program Manager
+3. Media Lead / Digital Marketing Manager
 
 Search Strategy:
-- Use queries like: "{brand_name} CMO India"
-- Use queries like: "{brand_name} Marketing Head India"
-- Use queries like: "{brand_name} Brand Manager India"
+- Focus specifically on "{brand_name} India LinkedIn Brand Manager"
+- Focus specifically on "{brand_name} India Marketing Program Manager"
 
 IMPORTANT RULES:
-1. Find REAL people who currently work at {brand_name}
-2. Focus on India-based or India-focused roles
-3. Return in this EXACT JSON format:
+1. Identify REAL people currently working in these roles in India.
+2. Return in this EXACT JSON format:
 {{
   "contacts": [
-    {{"name": "Full Name", "title": "Job Title", "reasoning": "Why this person matters"}},
-    {{"name": "Full Name", "title": "Job Title", "reasoning": "Why this person matters"}}
+    {{"name": "Full Name", "title": "Job Title", "reasoning": "Manages brand programs and marketing budgets"}}
   ]
 }}
-
-4. If you cannot find anyone, return: {{"contacts": []}}
-5. ONLY return the JSON, no other text
+3. If no one is found, return {{"contacts": []}}
 """
-
     grounding_tool = types.Tool(google_search=types.GoogleSearch())
     config = types.GenerateContentConfig(
-        temperature=0.3,  # Low temperature for factual extraction
+        temperature=0.1, # Lower temperature for better accuracy
         tools=[grounding_tool],
-        response_mime_type="application/json"  # Force JSON response
+        response_mime_type="application/json"
     )
     
     try:
-        # First API call: Discover the people
+        # Step 1: Discover people using Google Search Grounding
         response = gemini_llm_client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash", # Improved grounding model
             contents=discovery_prompt,
             config=config
         )
         
-        # Parse the JSON response
-        result_text = ""
-        for part in response.candidates[0].content.parts:
-            result_text += part.text
-        
-        result_text = result_text.strip()
-        
-        # Remove markdown code fences if present
+        result_text = response.text.strip()
         result_text = re.sub(r'```json\s*|\s*```', '', result_text).strip()
-        
         contacts_data = json.loads(result_text)
         discovered_contacts = contacts_data.get("contacts", [])
         
-        if not discovered_contacts:
-            print(f"    No key contacts found for {brand_name}")
-            return []
-        
-        print(f"    Found {len(discovered_contacts)} potential contacts for {brand_name}")
-        
-        # Step 2: For each discovered person, search for their LinkedIn
         enriched_contacts = []
-        
-        for contact in discovered_contacts[:3]:  # Max 3 contacts
+        for contact in discovered_contacts[:3]: # Max 3 contacts
             name = contact.get("name", "")
-            title = contact.get("title", "")
-            reasoning = contact.get("reasoning", "Key decision-maker")
+            if not name: continue
             
-            if not name:
-                continue
+            print(f"      Searching LinkedIn for discovered contact: {name}")
             
-            print(f"      Searching LinkedIn for: {name} ({title})")
-            
-            # Use our existing LinkedIn search function
+            # Step 2: Use search_linkedin_profile to get the specific URL
             linkedin_url = search_linkedin_profile(name, brand_name, gemini_llm_client)
             
             enriched_contacts.append({
                 'name': name,
-                'title': title,
-                'reasoning': reasoning,
+                'title': contact.get("title", ""),
+                'reasoning': contact.get("reasoning", "Key decision-maker for NBH collaborations"),
                 'linkedin_url': linkedin_url if linkedin_url else '(LinkedIn Not Verified)'
             })
-            
-            # Rate limiting
-            time.sleep(1)
+            time.sleep(2) # Pause between searches to avoid hitting quotas
         
         return enriched_contacts
-        
-    except json.JSONDecodeError as e:
-        print(f"    Error parsing contacts JSON for {brand_name}: {e}")
-        print(f"    Raw response: {result_text[:200]}")
-        return []
     except Exception as e:
-        print(f"    Error finding key contacts for {brand_name}: {e}")
+        print(f"    Error in key contact discovery for {brand_name}: {e}")
         return []
 
 class Industry(enum.Enum):
