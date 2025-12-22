@@ -1107,12 +1107,23 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 header_values = file_data_object[0].get("header", []) if isinstance(file_data_object[0], dict) else []
                 brand_col, ind_col, date_col = -1, -1, -1
 
+              # --- IMPROVED COLUMN DETECTION ---
+                brand_col, ind_col, date_col = -1, -1, -1 # Initialize to -1
+
                 if header_values:
                     lower_h = [str(h).strip().lower() for h in header_values]
                     for idx, h in enumerate(lower_h):
-                        if "brand" in h: brand_col = idx
-                        if "industry" in h or "category" in h: ind_col = idx
-                        if any(x in h for x in ["year", "date", "timestamp"]): date_col = idx
+                        # Identify Brand Column
+                        if "brand" in h: 
+                            brand_col = idx
+                        
+                        # Identify Industry Column (Added more keywords for Live Sheets)
+                        if any(x in h for x in ["industry", "category", "vertical", "segment"]): 
+                            ind_col = idx
+                        
+                        # Identify Date Column (Added 'month' to catch Live Sheet variations)
+                        if any(x in h for x in ["year", "date", "timestamp", "month"]): 
+                            date_col = idx
 
                 if brand_col == -1: continue
 
