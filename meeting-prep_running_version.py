@@ -63,7 +63,7 @@ leadership_emails = ["sristi.agarwal@nobroker.in", "rohit.c@nobroker.in"] # Add 
 
 EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP = {
     AGENT_EMAIL.lower().split('@')[0],
-    "pia.brand","pia"
+    "pia.brand","pia","nbh.meeting"
 }
 
 PROCESSED_EVENTS_FILE = 'processed_event_ids.txt' # Simple file-based tracking for local runs
