@@ -2108,15 +2108,15 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
             client_attendee = []
             
             for email in emails:
-    # Skip excluded emails first (before categorization)
-    if email.lower() in excluded_emails:
-        continue
-    
-    # Now categorize the remaining emails
-    if "nobroker" in email:
-        nobroker_attendee.append(email)
-    else:
-        client_attendee.append(email)
+                # Skip excluded emails first (before categorization)
+                if email.lower() in excluded_emails:
+                    continue
+                
+                # Now categorize the remaining emails
+                if "nobroker" in email:
+                    nobroker_attendee.append(email)
+                else:
+                    client_attendee.append(email)
             row = [id, title, date, f"{nobroker_attendee}", f"{client_attendee}"]
             values = [to_rowdata(row)]
             try:
