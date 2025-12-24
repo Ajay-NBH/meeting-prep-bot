@@ -1740,7 +1740,8 @@ def set_one_hour_email_reminder(calendar_service, event_id, calendar_id='primary
 NBH_SERVICE_ACCOUNTS_TO_EXCLUDE = { # Emails to exclude from the displayed NBH attendee list
     AGENT_EMAIL.lower(),
     "pia.brand@nobroker.in",
-    "pia@nobroker.in"
+    "pia@nobroker.in",
+    "nbh.meeting@gmail.com"
 }
 
 
@@ -1768,12 +1769,17 @@ def extract_meeting_info(event, agent_email_global, nbh_service_accounts_to_excl
     for attendee in attendees:
         email = attendee.get('email', '').lower()
         name = attendee.get('displayName', email.split('@')[0] if '@' in email else email)
+        
+        # Skip if this is an excluded service account (check BEFORE categorization)
+        if email in nbh_service_accounts_to_exclude_global:
+            continue
+        
+        # Categorize as NBH or Brand attendee
         if '@nobroker.in' in email:
-            if email not in nbh_service_accounts_to_exclude_global:
-                nbh_attendees.append({'email': email, 'name': name})
+            nbh_attendees.append({'email': email, 'name': name})
         elif email:
             brand_attendees_info.append({'name': name, 'email': email})
-# Removing this condition so that physical meetings do not get skipped
+    # Removing this condition so that physical meetings do not get skipped
     # if not brand_attendees_info:
     #     print(f"  Skipping event '{summary}': No external attendees.")
     #     return "NO_EXTERNAL_ATTENDEES"
