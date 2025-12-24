@@ -2108,18 +2108,15 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
             client_attendee = []
             
             for email in emails:
-                if "nobroker" in email:
-                    pseudo_name=False
-                    for name in excluded_emails:
-                        if name in email:
-                            pseudo_name=True
-                            break
-                    if pseudo_name==True:
-                        continue
-                    else:
-                        nobroker_attendee.append(email)
-                else:
-                    client_attendee.append(email)
+    # Skip excluded emails first (before categorization)
+    if email.lower() in excluded_emails:
+        continue
+    
+    # Now categorize the remaining emails
+    if "nobroker" in email:
+        nobroker_attendee.append(email)
+    else:
+        client_attendee.append(email)
             row = [id, title, date, f"{nobroker_attendee}", f"{client_attendee}"]
             values = [to_rowdata(row)]
             try:
@@ -2361,7 +2358,7 @@ def main():
         print("No new meetings to update in master sheet.")
     else:
         print(f"{len(events_to_update_list)} new meetings found")
-        update_events_in_sheets(master_sheet_id, events_to_update_list, sheets_service, EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, designations)
+        update_events_in_sheets(master_sheet_id, events_to_update_list, sheets_service, NBH_SERVICE_ACCOUNTS_TO_EXCLUDE, designations)
     
 
     updated_meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
