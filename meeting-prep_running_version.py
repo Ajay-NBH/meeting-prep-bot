@@ -1569,38 +1569,45 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         is_overall_direct_follow_up = bool(direct_follow_up_meetings)
         has_other_past_interactions = bool(other_past_meetings)
 
-# --- STEP 3: Build the sophisticated context for the LLM brief ---
+# --- STEP 3: Build the context for the LLM brief (FIXED LOGIC) ---
+        # LOGIC CHANGE: If we found meetings in the sheet for this Brand, we treat them ALL as relevant history.
+        # We do not filter by "Attendee Overlap" for the LLM context.
+        
         previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}':\n")
 
-        if direct_follow_up_meetings:
-            previous_meeting_notes_for_llm_list.append(
-                "### Actionable Follow-Up Items (from meetings with attendee overlap):\n"
-                "This upcoming meeting appears to be a DIRECT FOLLOW-UP to the specific meetings listed below. The brief should heavily focus on continuity, previous discussions, and action items from these engagements.\n\n"
-            )
-            for mtg_data_llm in direct_follow_up_meetings:
-                date_llm = mtg_data_llm.get("date_obj", datetime.date.min).strftime("%Y-%m-%d")
-                note_parts = [f"**Previous Meeting on {date_llm}:**\n"]
-                if mtg_data_llm.get('discussion') != "N/A": note_parts.append(f"- Key Discussion: {mtg_data_llm['discussion']}\n")
-                if mtg_data_llm.get('actions') != "N/A": note_parts.append(f"- Action Items: {mtg_data_llm['actions']}\n")
-                if mtg_data_llm.get('key_questions') != "N/A": note_parts.append(f"- Key Client Questions: {mtg_data_llm['key_questions']}\n")
-                if mtg_data_llm.get('client_pain_points') != "N/A": note_parts.append(f"- Client Pain Points Discussed: {mtg_data_llm['client_pain_points']}\n")
-                if mtg_data_llm.get('competition') != "N/A": note_parts.append(f"- Competition Discussion: {mtg_data_llm['competition']}\n")
-                note_parts.append("---\n")
-                previous_meeting_notes_for_llm_list.append("".join(note_parts))
+        # Combine specific follow-ups and general past meetings into one list
+        all_past_meetings = direct_follow_up_meetings + other_past_meetings
+        
+        # Sort by date (Newest first)
+        all_past_meetings.sort(key=lambda x: x.get("date_obj", datetime.date.min), reverse=True)
 
-        if other_past_meetings:
+        if all_past_meetings:
             previous_meeting_notes_for_llm_list.append(
-                "\n### General Context from Other Past Interactions:\n"
-                "NBH has had other, separate discussions with this brand. The high-level context below is for awareness and should not be treated as direct action items for this upcoming meeting.\n\n"
+                "### Previous Meeting Records (Historical Context):\n"
+                "The following meetings have occurred with this Brand. Use the most recent meeting notes to populate the 'Recap' and 'Action Items' sections.\n\n"
             )
-            for mtg_data_llm in other_past_meetings:
-                date_llm = mtg_data_llm.get("date_obj", datetime.date.min).strftime("%Y-%m-%d")
-                note_parts = [f"**Past Interaction on {date_llm}:**\n"]
-                if mtg_data_llm.get('discussion') != "N/A": note_parts.append(f"- General Topic: {mtg_data_llm['discussion'][:200]}...\n")
-                if mtg_data_llm.get('brand_traits') != "N/A": note_parts.append(f"- Observed Brand Traits: {mtg_data_llm['brand_traits']}\n")
-                if mtg_data_llm.get('customer_needs') != "N/A": note_parts.append(f"- Identified Customer Needs: {mtg_data_llm['customer_needs']}\n")
-                note_parts.append("---\n")
-                previous_meeting_notes_for_llm_list.append("".join(note_parts))
+            
+            for mtg in all_past_meetings:
+                date_str = mtg.get("date_obj", datetime.date.min).strftime("%Y-%m-%d")
+                
+                # We simply label if the team was the same or different, but we provide the data regardless
+                team_context = "(Same NBH Team)" if mtg.get("is_direct_follow_up_candidate") else "(Different NBH Team)"
+                
+                block = [f"**Meeting Date: {date_str} {team_context}**\n"]
+                
+                if mtg.get('discussion') != "N/A": 
+                    block.append(f"- Discussion Summary: {mtg['discussion']}\n")
+                if mtg.get('actions') != "N/A": 
+                    block.append(f"- Past Action Items: {mtg['actions']}\n")
+                if mtg.get('key_questions') != "N/A": 
+                    block.append(f"- Client Questions: {mtg['key_questions']}\n")
+                if mtg.get('client_pain_points') != "N/A": 
+                    block.append(f"- Pain Points: {mtg['client_pain_points']}\n")
+                
+                block.append("---\n")
+                previous_meeting_notes_for_llm_list.append("".join(block))
+        else:
+            previous_meeting_notes_for_llm_list.append("No previous meeting records found in database.\n")
 
         # --- STEP 4: Build data for the leadership alert email ---
         # The alert should contain info about the "other" meetings that are NOT direct follow-ups.
