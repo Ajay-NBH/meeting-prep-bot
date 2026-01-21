@@ -1153,9 +1153,10 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 ).execute()
                 headers = header_result.get('values', [])[0] if header_result.get('values') else []
 
-                # 2. Fetch Data Rows from Master Sheet (Row 3500 onwards)
+                # 2. Fetch ALL Data Rows from Master Sheet (Starting from Row 2)
+                # FIX: Changed A3500 to A2 to ensure we don't miss older brand history
                 data_result = sheets_service.spreadsheets().values().get(
-                    spreadsheetId=master_sheet_id, range="Meeting_data!A3500:AK"
+                    spreadsheetId=master_sheet_id, range="Meeting_data!A2:AK"
                 ).execute()
                 data_rows = data_result.get('values', [])
 
@@ -1207,11 +1208,11 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                         
                         if is_match:
                             row_info_mock = {
-                                "row_index": 3500 + i,
+                                "row_index": 2 + i, # FIX: Adjusted base index from 3500 to 2
                                 "values": padded_row
                             }
                             meeting_details = {
-                                "original_row_index": 3500 + i,
+                                "original_row_index": 2 + i, # FIX: Adjusted base index from 3500 to 2
                                 "original_row_info": row_info_mock
                             }
                             # Parse Date
