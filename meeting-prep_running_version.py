@@ -1574,7 +1574,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         # LOGIC CHANGE: If we found meetings in the sheet for this Brand, we treat them ALL as relevant history.
         # We do not filter by "Attendee Overlap" for the LLM context.
         
-        previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings with '{current_target_brand_name}':\n")
+        previous_meeting_notes_for_llm_list.append(f"## Insights from Previous NBH Meetings\n")
+        previous_meeting_notes_for_llm_list.append(f"**Brand:** {current_target_brand_name}\n\n")
 
         # Combine specific follow-ups and general past meetings into one list
         all_past_meetings = direct_follow_up_meetings + other_past_meetings
@@ -1627,8 +1628,9 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
             })
 
     else:
-        # This block handles the case where no previous meetings were found at all.
-        previous_meeting_notes_for_llm_list.append(f"## Previous NBH Meetings:\nNo previous meeting records found for '{current_target_brand_name}'.\n")
+    previous_meeting_notes_for_llm_list.append(
+        f"## Insights from Previous NBH Meetings\n**Brand:** {current_target_brand_name}\n\nNo previous meeting records found.\n"
+    )
 
     # --- Finalize the return dictionary ---
     final_context_parts_for_llm.append("".join(previous_meeting_notes_for_llm_list))
