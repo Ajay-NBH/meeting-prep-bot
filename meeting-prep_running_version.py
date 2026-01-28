@@ -1628,9 +1628,9 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
             })
 
     else:
-    previous_meeting_notes_for_llm_list.append(
-        f"## Insights from Previous NBH Meetings\n**Brand:** {current_target_brand_name}\n\nNo previous meeting records found.\n"
-    )
+        previous_meeting_notes_for_llm_list.append(
+            f"## Insights from Previous NBH Meetings\n**Brand:** {current_target_brand_name}\n\nNo previous meeting records found.\n"
+        )
 
     # --- Finalize the return dictionary ---
     final_context_parts_for_llm.append("".join(previous_meeting_notes_for_llm_list))
