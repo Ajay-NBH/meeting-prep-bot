@@ -1658,7 +1658,23 @@ def get_upcoming_meetings(calendar_service, calendar_id='primary', time_delta_ho
             # q='brand.vmeet@nobroker.in' # This might filter too early if brandvmeet is added as resource
         ).execute()
         events = events_result.get('items', [])
-        return events
+        
+        # ✅ FILTER OUT TASK EVENTS (Skip events starting with task markers)
+        TASK_PREFIXES = ['✅ TASK', '☑ TASK', 'TASK:', '[TASK]']
+        filtered_events = []
+        
+        for event in events:
+            title = event.get('summary', '').strip()
+            is_task = any(title.startswith(prefix) for prefix in TASK_PREFIXES)
+            
+            if not is_task:
+                filtered_events.append(event)
+            else:
+                print(f"  ⏭️  Skipping task event: '{title}'")
+        
+        print(f"  ✅ Filtered {len(events) - len(filtered_events)} task events, {len(filtered_events)} meetings remaining")
+        return filtered_events
+        
     except HttpError as error:
         print(f'An error occurred fetching events: {error}')
         return []
