@@ -881,6 +881,80 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
     has_other_past_interactions = False 
     condensed_past_meetings_for_alert = []
 
+    # --- HELPER FUNCTION FOR CAMPAIGN EXTRACTION (RESTORED) ---
+    def extract_matching_rows(file_data_obj, fname, brand_clean, kwords):
+        list_2025 = []
+        list_2024 = []
+        
+        if not isinstance(file_data_obj, list) or not file_data_obj:
+            return list_2025, list_2024
+        
+        header_vals = file_data_obj[0].get("header", []) if isinstance(file_data_obj[0], dict) else []
+        brand_col, ind_col, date_col = -1, -1, -1
+
+        if header_vals:
+            lower_h = [str(h).strip().lower() for h in header_vals]
+            for idx, h in enumerate(lower_h):
+                if "brand" in h: brand_col = idx
+                if any(x in h for x in ["industry", "category", "vertical", "segment"]): ind_col = idx
+                if any(x in h for x in ["year", "date", "timestamp", "month"]): date_col = idx
+
+        if brand_col == -1:
+            return list_2025, list_2024
+
+        data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else []
+        
+        for row_info in reversed(data_rows):
+            vals = row_info.get('values', [])
+            if not vals or not any(str(v).strip() for v in vals): 
+                continue
+            
+            row_brand = str(vals[brand_col]).strip().lower() if len(vals) > brand_col else ""
+            row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
+            row_date = str(vals[date_col]).strip() if date_col != -1 and len(vals) > date_col else ""
+
+            is_match = False
+            if brand_clean in row_brand or row_brand in brand_clean:
+                is_match = True 
+            elif kwords and any(word in row_ind for word in kwords):
+                is_match = True 
+
+            if is_match:
+                row_items = [f"{header_vals[i]}: {str(vals[i]).strip()}" 
+                            for i in range(len(header_vals)) 
+                            if i < len(vals) and str(vals[i]).strip() and str(vals[i]).lower() != "n/a"]
+                entry = " | ".join(row_items) + "\n"
+                
+                if "2025" in row_date:
+                    list_2025.append(entry)
+                elif "2024" in row_date:
+                    list_2024.append(entry)
+        
+        return list_2025, list_2024
+
+    # --- SETUP INDUSTRY KEYWORDS FOR CAMPAIGN SEARCH ---
+    STRICT_INDUSTRY_MAP = {
+        "FMCG": ["fmcg", "consumer", "goods", "staples", "packaged", "textiles"],
+        "Automotive & Transportation": ["automotive", "car", "bike", "ev", "vehicle", "transport"],
+        "Food & Beverage": ["food", "beverage", "f&b", "dairy", "snacks", "drinks", "restaurant", "hospitality"],
+        "Jewellery": ["jewel", "gold", "diamond", "ornament"],
+        "Apparel & Fashion": ["apparel", "fashion", "clothing", "wear", "shoes", "textiles"],
+        "Finance & Fintech": ["finance", "fintech", "bank", "insurance", "loan", "trading"],
+        "Beauty & Personal Care": ["beauty", "cosmetic", "skincare", "grooming", "wellness"],
+        "Real Estate & Construction": ["real estate", "builder", "construction", "property", "interior design", "interior"],
+        "Healthcare": ["healthcare", "hospital", "medical", "pharma", "wellness", "clinic"],
+        "E-Commerce": ["e-commerce", "ecommerce", "online", "marketplace"],
+        "Retail": ["retail", "supermarket", "mall", "store", "furniture"],
+        "OTT": ["ott", "streaming", "entertainment", "video"],
+        "Marketing, Advertising & Media": ["advertising", "marketing", "events", "entertainment", "media"],
+        "Education & Training": ["education", "school", "college", "training", "admissions"],
+        "Home Goods & Electronics": ["furniture", "interior", "home services", "electronics", "appliances"],
+        "Hospitality & Travel": ["hospitality", "travel", "tourism", "hotel", "resort"],
+        "Membership & Local Services": ["home services", "local", "membership", "community"]
+    }
+    keywords = STRICT_INDUSTRY_MAP.get(target_brand_industry, [])
+    target_brand_clean = current_target_brand_name.lower().strip()
+
     # 1. Get Current Meeting Date
     current_meeting_date_obj = current_meeting_data.get('start_time_obj')
     if isinstance(current_meeting_date_obj, datetime.datetime):
@@ -892,10 +966,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
     current_nbh_tokens = set()
     for att in current_meeting_data.get('nbh_attendees', []):
         if att.get('email'):
-            # Add "john.doe"
             current_nbh_tokens.add(att['email'].lower().split('@')[0].strip()) 
         if att.get('name'):
-             # Add "John" and "Doe" separately
              parts = att['name'].lower().split()
              for p in parts: 
                  if len(p) > 2: current_nbh_tokens.add(p)
@@ -949,10 +1021,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                     if row_date_obj < current_meeting_date_only:
                         
                         # C. ATTENDEE MATCHING (Strict Privacy Check)
-                        # Get previous attendees string, e.g., "Mani Vasagan, Pradeep KT"
                         prev_nbh_raw = str(row[col_nbh_attendees]).lower() if len(row) > col_nbh_attendees else ""
                         
-                        # Check if ANY token from current meeting exists in previous meeting string
                         is_match = False
                         if prev_nbh_raw:
                             is_match = any(token in prev_nbh_raw for token in current_nbh_tokens)
@@ -969,7 +1039,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                         if is_match:
                             found_meetings.append(meeting_info)
                         else:
-                            # It's a past interaction but different team.
                             has_other_past_interactions = True
                             condensed_past_meetings_for_alert.append({
                                 "date": row_date_str,
@@ -985,7 +1054,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 top_meeting = found_meetings[0]
 
                 # --- CONSTRUCT THE "CALL PREP" INTELLIGENCE BLOCK ---
-                # This block only gets created if Brand Matches + Attendee Matches
                 history_context_str = (
                     f"## PREVIOUS MEETING INTELLIGENCE (MATCHED)\n"
                     f"**Last Meeting Date:** {top_meeting['date_str']}\n"
@@ -1000,7 +1068,7 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                     f"--------------------------------------------------\n"
                 )
                 
-                # Add depth from 2nd latest meeting if available
+                # Add depth from 2nd latest meeting
                 if len(found_meetings) > 1:
                     history_context_str += "**Older Context:**\n"
                     for old in found_meetings[1:3]:
@@ -1016,10 +1084,9 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         fid = item['id']
         mtype = item.get('mimeType', '')
 
-        # Skip Master Sheet (already read)
         if FILE_NAME_NBH_PREVIOUS_MEETINGS_GSHEET.lower() in fname.lower(): continue
 
-        # Campaigns/Case Studies
+        # Campaigns/Case Studies using the restored helper function
         if FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
             content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
             p_25, p_24 = extract_matching_rows(content, fname, target_brand_clean, keywords)
@@ -1033,10 +1100,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 general_context_parts.append(f"## DIGITAL CAMPAIGNS ({fname}):\n" + "\n".join(d_25[:5] + d_24[:3]))
 
         elif FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in fname.lower():
-             # Basic extraction for case studies
              pass 
         
-        # PDF Parsing (Pitch Decks / Case Studies PDF)
         elif 'pdf' in mtype.lower() and (FILE_NAME_PITCH_DECK_PDF.lower() in fname.lower() or FILE_NAME_CASE_STUDIES_PDF.lower() in fname.lower()):
              content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
              if isinstance(content, str) and len(content) > 100:
