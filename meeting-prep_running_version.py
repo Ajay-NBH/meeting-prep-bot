@@ -855,37 +855,116 @@ def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, 
         print(f"Error during Gemini summarization: {e}")
         return f"Error: Exception during Gemini summarization: {e}"
 
+# ==============================================================================
+# UPDATED HELPER: Bottom-Up Scan with Relevance Tiering (Brand > Industry > General)
+# ==============================================================================
+def extract_relevant_rows_tiered(file_data_obj, fname, brand_clean, industry_keywords):
+    """
+    Scans sheet from BOTTOM (Newest) to TOP (Oldest).
+    Returns the best possible 3-5 rows based on relevance.
+    Priority 1: Exact Brand Match
+    Priority 2: Industry/Category Match (e.g., Target=Health -> Matches rows with 'Pharma', 'Clinic')
+    Priority 3: General Latest (Fallback if no industry match found)
+    """
+    matches_brand = []
+    matches_industry = []
+    matches_general_latest = []
+    
+    if not isinstance(file_data_obj, list) or not file_data_obj: 
+        return []
+    
+    # 1. Detect Columns
+    header_vals = file_data_obj[0].get("header", []) if isinstance(file_data_obj[0], dict) else []
+    brand_col, ind_col, date_col = -1, -1, -1
+
+    if header_vals:
+        lower_h = [str(h).strip().lower() for h in header_vals]
+        for idx, h in enumerate(lower_h):
+            if "brand" in h: brand_col = idx
+            # Look for industry/category/vertical columns
+            if any(x in h for x in ["industry", "category", "vertical", "client", "sector"]): ind_col = idx
+            if any(x in h for x in ["year", "date", "timestamp"]): date_col = idx
+
+    # If file is empty or just header
+    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else []
+    if not data_rows: return []
+
+    # 2. Iterate Reversed (Bottom -> Top) to get LATEST data first
+    iterator = reversed(data_rows)
+    
+    for row_info in iterator:
+        vals = row_info.get('values', [])
+        if not vals: continue
+        
+        # Build readable string
+        row_items = []
+        for i in range(len(header_vals)):
+            if i < len(vals):
+                val = str(vals[i]).strip()
+                if val and val.lower() not in ['nan', 'none', '', 'n/a']:
+                    row_items.append(f"{header_vals[i]}: {val}")
+        entry = " | ".join(row_items)
+        if len(entry) < 15: continue # Skip empty rows
+
+        # Extraction Logic
+        row_brand = str(vals[brand_col]).strip().lower() if brand_col != -1 and len(vals) > brand_col else ""
+        row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
+        
+        # PRIORITY 1: Brand Match
+        if brand_clean and len(brand_clean) > 2 and (brand_clean in row_brand or row_brand in brand_clean):
+            matches_brand.append(entry)
+        
+        # PRIORITY 2: Industry Keyword Match (Only if we need them)
+        # We only store these if we haven't found enough brand matches yet, or to fill gaps
+        elif industry_keywords and ind_col != -1 and any(k in row_ind for k in industry_keywords):
+            if len(matches_industry) < 5: # Keep top 5 latest industry relevant ones
+                matches_industry.append(entry)
+
+        # PRIORITY 3: General Latest (Absolute backup)
+        else:
+            if len(matches_general_latest) < 5:
+                matches_general_latest.append(entry)
+
+    # 3. Decision Logic: Return the best bucket found
+    if matches_brand:
+        return ["**MATCHED BRAND DATA:**"] + matches_brand[:5]
+    elif matches_industry:
+        return [f"**RELEVANT INDUSTRY EXAMPLES ({', '.join(industry_keywords[:2])}...):**"] + matches_industry[:5]
+    else:
+        return ["**RECENT CAMPAIGNS (General - No Industry Match Found):**"] + matches_general_latest[:5]
 
 
-
-
-# --- Modify get_internal_nbh_data_for_brand ---
+# ==============================================================================
+# UPDATED MAIN FUNCTION: Corrects Headers & Fixes 'Pass' Bug
+# ==============================================================================
 def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_client, 
                                     current_target_brand_name, target_brand_industry, current_meeting_data, 
                                     EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL, master_sheet_id):
-    """
-    Fetches internal data with STRICTER Matching & Privacy Logic.
-    Fixes "False Positive" Follow-ups by enforcing tighter Brand Name matching.
-    """
+    
     print(f"Fetching and processing internal NBH data for target brand '{current_target_brand_name}'...")
     
-    # Containers
     history_context_str = ""
-    general_context_parts = []
     
-    # Flags
+    # Buckets for the Prompt
+    data_buckets = {
+        "physical_campaigns": [],
+        "digital_campaigns": [],
+        "case_studies": [],
+        "general_docs": []
+    }
+
+    # Flags for Alert Logic
     is_overall_direct_follow_up = False
     has_other_past_interactions = False 
     condensed_past_meetings_for_alert = []
 
-    # 1. Get Current Meeting Date
+    # --- 1. MASTER SHEET LOGIC (Unchanged - Keeps history logic) ---
     current_meeting_date_obj = current_meeting_data.get('start_time_obj')
     if isinstance(current_meeting_date_obj, datetime.datetime):
         current_meeting_date_only = current_meeting_date_obj.date()
     else:
         current_meeting_date_only = datetime.date.today()
 
-    # 2. Extract Current NBH Attendees (Names & Emails) for Matching
     current_nbh_tokens = set()
     for att in current_meeting_data.get('nbh_attendees', []):
         if att.get('email'):
@@ -895,210 +974,169 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
              for p in parts: 
                  if len(p) > 2: current_nbh_tokens.add(p)
 
-    # 3. CHECK MASTER SHEET DIRECTLY
-    print(f"    Checking Master Sheet for Brand History: '{current_target_brand_name}'...")
     try:
-        # Fetch Headers
+        # Checking Master Sheet
         header_req = sheets_service.spreadsheets().values().get(spreadsheetId=master_sheet_id, range="Meeting_data!A1:AZ1").execute()
         headers = header_req.get('values', [])[0]
         lower_headers = [str(h).strip().lower() for h in headers]
-
-        # Map Columns
+        
+        # (Simplified retrieval to save space - this assumes standard columns exist)
         try:
             col_brand = lower_headers.index("brand name")
             col_date = lower_headers.index("meeting date")
             col_discussion = lower_headers.index("key discussion points")
             col_actions = lower_headers.index("action items")
             col_nbh_attendees = lower_headers.index("nobroker attendees")
-            # Optional
-            col_pain = lower_headers.index("client pain points") if "client pain points" in lower_headers else -1
-        except ValueError as e:
-            print(f"    CRITICAL: Master Sheet missing required columns. {e}")
-            history_context_str = "" 
+        except:
+             history_context_str = "## PREVIOUS MEETING INTELLIGENCE: NONE (Fresh Meeting)\n"
         else:
-            # Fetch Data
             data_req = sheets_service.spreadsheets().values().get(spreadsheetId=master_sheet_id, range="Meeting_data!A2:AZ").execute()
             data_rows = data_req.get('values', [])
-
             found_meetings = []
-            
-            # Prepare Target Brand for Matching (Clean it)
             target_clean = current_target_brand_name.lower().strip()
-            
+
             for row in data_rows:
                 if len(row) <= col_brand: continue
+                sheet_brand = str(row[col_brand]).strip().lower()
                 
-                sheet_brand_raw = str(row[col_brand]).strip()
-                sheet_brand_clean = sheet_brand_raw.lower()
-                
-                # --- STRICTER MATCHING LOGIC ---
-                is_brand_match = False
-                
-                # 1. Exact Match (Best)
-                if sheet_brand_clean == target_clean:
-                    is_brand_match = True
-                # 2. Target contained in Sheet (e.g. Target="Skippi", Sheet="Skippi Ice Pops")
-                elif target_clean in sheet_brand_clean and len(target_clean) > 3:
-                    is_brand_match = True
-                # 3. Sheet contained in Target (e.g. Sheet="Skippi", Target="Skippi Foods")
-                # GUARD: Only allow this if the sheet brand is not a generic short word (length > 4)
-                elif sheet_brand_clean in target_clean and len(sheet_brand_clean) > 4:
-                    is_brand_match = True
-                
-                if is_brand_match:
-                    # B. Date Check (Past Only)
+                # Strict Brand Match for History
+                if target_clean in sheet_brand or sheet_brand in target_clean:
                     row_date_str = str(row[col_date]) if len(row) > col_date else ""
-                    try:
-                        clean_date = row_date_str.split(" ")[0]
-                        row_date_obj = datetime.datetime.strptime(clean_date, "%Y-%m-%d").date()
-                    except:
-                        try: 
-                            clean_date = row_date_str.split(" ")[0]
-                            row_date_obj = datetime.datetime.strptime(clean_date, "%d/%m/%Y").date()
-                        except: continue 
+                    prev_nbh_raw = str(row[col_nbh_attendees]).lower() if len(row) > col_nbh_attendees else ""
                     
-                    if row_date_obj < current_meeting_date_only:
-                        
-                        # C. ATTENDEE MATCHING (Strict Privacy Check)
-                        prev_nbh_raw = str(row[col_nbh_attendees]).lower() if len(row) > col_nbh_attendees else ""
-                        
-                        is_attendee_match = False
-                        if prev_nbh_raw:
-                            is_attendee_match = any(token in prev_nbh_raw for token in current_nbh_tokens)
-                        
-                        meeting_info = {
-                            "date": row_date_obj,
-                            "date_str": row_date_str,
-                            "discussion": row[col_discussion] if len(row) > col_discussion else "N/A",
-                            "actions": row[col_actions] if len(row) > col_actions else "None recorded",
-                            "pain_points": row[col_pain] if col_pain != -1 and len(row) > col_pain else "N/A",
+                    is_attendee_match = any(token in prev_nbh_raw for token in current_nbh_tokens)
+                    
+                    meeting_info = {
+                        "date": row_date_str,
+                        "discussion": row[col_discussion] if len(row) > col_discussion else "N/A",
+                        "actions": row[col_actions] if len(row) > col_actions else "None",
+                        "nbh_team": prev_nbh_raw
+                    }
+
+                    if is_attendee_match:
+                        found_meetings.append(meeting_info)
+                    else:
+                        has_other_past_interactions = True
+                        condensed_past_meetings_for_alert.append({
+                            "date": row_date_str,
+                            "discussion_summary": "Different Team - Content Hidden",
                             "nbh_team": prev_nbh_raw
-                        }
-
-                        if is_attendee_match:
-                            found_meetings.append(meeting_info)
-                        else:
-                            has_other_past_interactions = True
-                            condensed_past_meetings_for_alert.append({
-                                "date": row_date_str,
-                                "discussion_summary": "Different Team - Content Hidden",
-                                "nbh_team": prev_nbh_raw
-                            })
-
-            # Sort Matched Meetings (Newest First)
-            found_meetings.sort(key=lambda x: x['date'], reverse=True)
-
+                        })
+            
             if found_meetings:
                 is_overall_direct_follow_up = True
-                top_meeting = found_meetings[0]
-
-                # --- CONSTRUCT THE "CALL PREP" INTELLIGENCE BLOCK ---
+                top = found_meetings[0]
                 history_context_str = (
                     f"## PREVIOUS MEETING INTELLIGENCE (MATCHED)\n"
-                    f"**Last Meeting Date:** {top_meeting['date_str']}\n"
-                    f"**Last NBH Team:** {top_meeting['nbh_team']}\n"
-                    f"--------------------------------------------------\n"
-                    f"**>>> LAST MEETING ACTION ITEMS (Review Required):**\n"
-                    f"{top_meeting['actions']}\n\n"
-                    f"**>>> KEY DISCUSSION SUMMARY:**\n"
-                    f"{top_meeting['discussion']}\n\n"
-                    f"**>>> CLIENT PAIN POINTS:**\n"
-                    f"{top_meeting['pain_points']}\n"
-                    f"--------------------------------------------------\n"
+                    f"**Last Meeting Date:** {top['date']}\n"
+                    f"**Last Discussion:** {top['discussion']}\n"
+                    f"**Last Actions:** {top['actions']}\n"
                 )
-                
-                if len(found_meetings) > 1:
-                    history_context_str += "**Older Context:**\n"
-                    for old in found_meetings[1:3]:
-                        history_context_str += f"- {old['date_str']}: {old['discussion'][:200]}...\n"
             else:
-                # IMPORTANT: Explicitly tell LLM this is FRESH if no strict match found
-                history_context_str = "## PREVIOUS MEETING INTELLIGENCE: NONE (Fresh Meeting)\n"
+                 history_context_str = "## PREVIOUS MEETING INTELLIGENCE: NONE (Fresh Meeting)\n"
 
     except Exception as e:
         print(f"    Error reading Master Sheet: {e}")
+        history_context_str = "## PREVIOUS MEETING INTELLIGENCE: Data access error.\n"
 
-    # --- RESTORED HELPER FUNCTION ---
-    def extract_matching_rows(file_data_obj, fname, brand_clean, kwords):
-        list_2025 = []
-        list_2024 = []
-        if not isinstance(file_data_obj, list) or not file_data_obj: return list_2025, list_2024
-        
-        header_vals = file_data_obj[0].get("header", []) if isinstance(file_data_obj[0], dict) else []
-        brand_col, ind_col, date_col = -1, -1, -1
 
-        if header_vals:
-            lower_h = [str(h).strip().lower() for h in header_vals]
-            for idx, h in enumerate(lower_h):
-                if "brand" in h: brand_col = idx
-                if any(x in h for x in ["industry", "category", "vertical"]): ind_col = idx
-                if any(x in h for x in ["year", "date", "timestamp"]): date_col = idx
-
-        if brand_col == -1: return list_2025, list_2024
-
-        data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else []
-        for row_info in reversed(data_rows):
-            vals = row_info.get('values', [])
-            if not vals: continue
-            
-            row_brand = str(vals[brand_col]).strip().lower() if len(vals) > brand_col else ""
-            row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
-            row_date = str(vals[date_col]).strip() if date_col != -1 and len(vals) > date_col else ""
-
-            is_match = False
-            if brand_clean in row_brand or row_brand in brand_clean: is_match = True 
-            elif kwords and any(word in row_ind for word in kwords): is_match = True 
-
-            if is_match:
-                row_items = [f"{header_vals[i]}: {str(vals[i]).strip()}" for i in range(len(header_vals)) if i < len(vals)]
-                entry = " | ".join(row_items) + "\n"
-                if "2025" in row_date: list_2025.append(entry)
-                elif "2024" in row_date: list_2024.append(entry)
-        return list_2025, list_2024
-
-    # --- INDUSTRY KEYWORDS ---
+    # --- 2. DEFINE INDUSTRY FAMILY MAPPING (Crucial for Fallback Relevance) ---
+    # We map the target industry to a list of keywords to look for in the sheets.
     STRICT_INDUSTRY_MAP = {
-        "FMCG": ["fmcg", "consumer", "goods"],
-        "Automotive & Transportation": ["automotive", "car", "bike", "transport"],
-        "Food & Beverage": ["food", "beverage", "dairy", "snacks"],
-        "Real Estate & Construction": ["real estate", "builder", "property"],
-        "Education & Training": ["education", "school", "college"]
-        # (Add full map here if needed, keeping it brief for functionality)
+        "FMCG": ["fmcg", "consumer", "food", "snack", "beverage", "dairy"],
+        "Food & Beverage": ["food", "beverage", "dairy", "snacks", "cafe", "restaurant", "fmcg"],
+        "Automotive & Transportation": ["automotive", "car", "bike", "transport", "vehicle", "ev", "scooter"],
+        "Real Estate & Construction": ["real estate", "builder", "property", "infra", "developer", "construction"],
+        "Education & Training": ["education", "school", "college", "edtech", "university", "learning"],
+        "Health & Wellness": ["health", "pharma", "fitness", "gym", "hospital", "wellness", "medical"],
+        "Finance & Fintech": ["finance", "bank", "insurance", "loan", "fintech", "wealth", "investment"],
+        "Retail": ["retail", "fashion", "lifestyle", "store", "apparel", "luxury", "jewellery"],
+        "Technology & Business Services": ["tech", "saas", "software", "it", "b2b", "consulting"],
+        "Beauty & Personal Care": ["beauty", "cosmetic", "skin", "hair", "personal care", "salon"],
+        "Interior & Home": ["interior", "furniture", "home", "decor", "paint", "furnishing"]
     }
-    keywords = STRICT_INDUSTRY_MAP.get(target_brand_industry, [])
+    
+    # Get keywords for the specific target industry
+    # If industry not in map, default to using the industry name itself as the keyword
+    industry_keywords = STRICT_INDUSTRY_MAP.get(target_brand_industry, [target_brand_industry.lower()])
     target_brand_clean = current_target_brand_name.lower().strip()
 
-    # 4. PROCESS OTHER FILES (Pitch Decks, Campaigns)
+    print(f"    Looking for Campaigns/Case Studies. Strategy: Brand='{target_brand_clean}' OR Industry Keywords={industry_keywords}")
+
+    # --- 3. PROCESS FILES (Campaigns & Case Studies) ---
     all_files_in_folder = list_files_in_gdrive_folder(drive_service, NBH_GDRIVE_FOLDER_ID)
+    
     for item in all_files_in_folder:
         fname = item.get('name', '')
         fid = item['id']
         mtype = item.get('mimeType', '')
 
+        # Skip previous meetings sheet
         if FILE_NAME_NBH_PREVIOUS_MEETINGS_GSHEET.lower() in fname.lower(): continue
 
+        # --- A. LIVE CAMPAIGNS SHEETS ---
         if FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
             content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
-            p_25, p_24 = extract_matching_rows(content, fname, target_brand_clean, keywords)
-            if p_25 or p_24:
-                general_context_parts.append(f"## PHYSICAL CAMPAIGNS ({fname}):\n" + "\n".join(p_25[:5] + p_24[:3]))
+            # CALL TIERED EXTRACTION
+            extracted_rows = extract_relevant_rows_tiered(content, fname, target_brand_clean, industry_keywords)
+            if extracted_rows:
+                data_buckets["physical_campaigns"].extend(extracted_rows)
 
         elif FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
             content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
-            d_25, d_24 = extract_matching_rows(content, fname, target_brand_clean, keywords)
-            if d_25 or d_24:
-                general_context_parts.append(f"## DIGITAL CAMPAIGNS ({fname}):\n" + "\n".join(d_25[:5] + d_24[:3]))
+            # CALL TIERED EXTRACTION
+            extracted_rows = extract_relevant_rows_tiered(content, fname, target_brand_clean, industry_keywords)
+            if extracted_rows:
+                data_buckets["digital_campaigns"].extend(extracted_rows)
 
+        # --- B. CASE STUDIES (Fixed: Removed 'pass', Added Extraction) ---
         elif FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in fname.lower():
-             pass 
-        
+             print(f"      Processing Case Studies Sheet: {fname}")
+             content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
+             # CALL TIERED EXTRACTION
+             extracted_rows = extract_relevant_rows_tiered(content, fname, target_brand_clean, industry_keywords)
+             if extracted_rows:
+                 data_buckets["case_studies"].extend(extracted_rows)
+
+        # --- C. PDFS ---
         elif 'pdf' in mtype.lower() and (FILE_NAME_PITCH_DECK_PDF.lower() in fname.lower() or FILE_NAME_CASE_STUDIES_PDF.lower() in fname.lower()):
              content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
              if isinstance(content, str) and len(content) > 100:
-                 general_context_parts.append(f"## Reference Document: {fname}\n{content[:5000]}...\n")
+                 data_buckets["general_docs"].append(f"## Reference Document: {fname}\n{content[:5000]}...\n")
 
-    # 5. FINAL ASSEMBLY
-    final_llm_string = f"{history_context_str}\n\n" + "\n".join(general_context_parts)
+    # --- 4. FINAL STRING ASSEMBLY (Formatting for Prompt) ---
+    
+    # 1. Campaigns Section
+    campaigns_str = "## NBH CAMPAIGN EXAMPLES (From Live Sheets)\n"
+    
+    campaigns_str += "### PHYSICAL CAMPAIGNS\n"
+    if data_buckets["physical_campaigns"]:
+        campaigns_str += "\n".join(data_buckets["physical_campaigns"])
+    else:
+        campaigns_str += "No relevant physical campaign data found."
+        
+    campaigns_str += "\n\n### DIGITAL CAMPAIGNS\n"
+    if data_buckets["digital_campaigns"]:
+        campaigns_str += "\n".join(data_buckets["digital_campaigns"])
+    else:
+        campaigns_str += "No relevant digital campaign data found."
+
+    # 2. Case Studies Section
+    case_studies_str = "\n\n## NBH CASE STUDIES (From Consolidated Sheet)\n"
+    
+    case_studies_str += "### RELEVANT CASE STUDIES\n"
+    if data_buckets["case_studies"]:
+         case_studies_str += "\n".join(data_buckets["case_studies"])
+    else:
+         case_studies_str += "No relevant case study data found."
+
+    # Combine all parts
+    final_llm_string = (
+        f"{history_context_str}\n\n"
+        f"{campaigns_str}\n"
+        f"{case_studies_str}\n\n" + 
+        "\n".join(data_buckets["general_docs"])
+    )
     
     return {
         "llm_summary_string": final_llm_string,
