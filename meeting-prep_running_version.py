@@ -856,86 +856,80 @@ def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, 
         return f"Error: Exception during Gemini summarization: {e}"
 
 # ==============================================================================
-# UPDATED HELPER: Bottom-Up Scan with Relevance Tiering (Brand > Industry > General)
+# SMART AUDIENCE HELPER: Brand > Strict Industry > Similar Audience Macro-Category
 # ==============================================================================
-def extract_relevant_rows_tiered(file_data_obj, fname, brand_clean, industry_keywords):
+def extract_smart_campaigns_and_case_studies(file_data_obj, fname, brand_clean, strict_keywords, broad_keywords):
     """
     Scans sheet from BOTTOM (Newest) to TOP (Oldest).
-    Returns the best possible 3-5 rows based on relevance.
     Priority 1: Exact Brand Match
-    Priority 2: Industry/Category Match (e.g., Target=Health -> Matches rows with 'Pharma', 'Clinic')
-    Priority 3: General Latest (Fallback if no industry match found)
+    Priority 2: Strict Industry Match (e.g., Beauty -> Cosmetics)
+    Priority 3: Similar Audience Match (e.g., Beauty -> FMCG/Apparel)
+    Random Fallbacks are completely eliminated to maintain relevance.
     """
     matches_brand = []
-    matches_industry = []
-    matches_general_latest = []
+    matches_strict = []
+    matches_broad =[]
     
     if not isinstance(file_data_obj, list) or not file_data_obj: 
-        return []
+        return[]
     
-    # 1. Detect Columns
-    header_vals = file_data_obj[0].get("header", []) if isinstance(file_data_obj[0], dict) else []
+    # Detect Columns
+    header_vals = file_data_obj[0].get("header",[]) if isinstance(file_data_obj[0], dict) else[]
     brand_col, ind_col, date_col = -1, -1, -1
 
     if header_vals:
-        lower_h = [str(h).strip().lower() for h in header_vals]
+        lower_h =[str(h).strip().lower() for h in header_vals]
         for idx, h in enumerate(lower_h):
             if "brand" in h: brand_col = idx
-            # Look for industry/category/vertical columns
             if any(x in h for x in ["industry", "category", "vertical", "client", "sector"]): ind_col = idx
             if any(x in h for x in ["year", "date", "timestamp"]): date_col = idx
 
-    # If file is empty or just header
     data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else []
-    if not data_rows: return []
+    if not data_rows: return[]
 
-    # 2. Iterate Reversed (Bottom -> Top) to get LATEST data first
-    iterator = reversed(data_rows)
-    
-    for row_info in iterator:
+    # Iterate Newest First (Bottom -> Top)
+    for row_info in reversed(data_rows):
         vals = row_info.get('values', [])
         if not vals: continue
         
-        # Build readable string
-        row_items = []
+        row_items =[]
         for i in range(len(header_vals)):
             if i < len(vals):
                 val = str(vals[i]).strip()
-                if val and val.lower() not in ['nan', 'none', '', 'n/a']:
+                if val and val.lower() not in['nan', 'none', '', 'n/a']:
                     row_items.append(f"{header_vals[i]}: {val}")
         entry = " | ".join(row_items)
-        if len(entry) < 15: continue # Skip empty rows
+        if len(entry) < 15: continue
 
-        # Extraction Logic
         row_brand = str(vals[brand_col]).strip().lower() if brand_col != -1 and len(vals) > brand_col else ""
         row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
         
-        # PRIORITY 1: Brand Match
+        # Priority 1: Exact Brand Match
         if brand_clean and len(brand_clean) > 2 and (brand_clean in row_brand or row_brand in brand_clean):
             matches_brand.append(entry)
-        
-        # PRIORITY 2: Industry Keyword Match (Only if we need them)
-        # We only store these if we haven't found enough brand matches yet, or to fill gaps
-        elif industry_keywords and ind_col != -1 and any(k in row_ind for k in industry_keywords):
-            if len(matches_industry) < 5: # Keep top 5 latest industry relevant ones
-                matches_industry.append(entry)
+        # Priority 2: Strict Industry Match
+        elif strict_keywords and ind_col != -1 and any(k in row_ind for k in strict_keywords):
+            if len(matches_strict) < 5: 
+                matches_strict.append(entry)
+        # Priority 3: Broad Audience/Similar Industry Match
+        elif broad_keywords and ind_col != -1 and any(k in row_ind for k in broad_keywords):
+            if len(matches_broad) < 5: 
+                matches_broad.append(entry)
 
-        # PRIORITY 3: General Latest (Absolute backup)
-        else:
-            if len(matches_general_latest) < 5:
-                matches_general_latest.append(entry)
-
-    # 3. Decision Logic: Return the best bucket found
+    # Return Logic: Give the most accurate tier available
     if matches_brand:
         return ["**MATCHED BRAND DATA:**"] + matches_brand[:5]
-    elif matches_industry:
-        return [f"**RELEVANT INDUSTRY EXAMPLES ({', '.join(industry_keywords[:2])}...):**"] + matches_industry[:5]
-    else:
-        return ["**RECENT CAMPAIGNS (General - No Industry Match Found):**"] + matches_general_latest[:5]
+    elif matches_strict:
+        primary_kw = strict_keywords[0].title() if strict_keywords else "Related"
+        return [f"**MATCHED INDUSTRY EXAMPLES ({primary_kw}):**"] + matches_strict[:5]
+    elif matches_broad:
+        return[f"**SIMILAR TARGET AUDIENCE CAMPAIGNS (Highly Relevant to Client Demographic):**"] + matches_broad[:5]
+    
+    return[]
 
 
 # ==============================================================================
-# UPDATED MAIN FUNCTION: Corrects Headers & Fixes 'Pass' Bug
+# MAIN FUNCTION: Powered by Smart Audience Mapping
 # ==============================================================================
 def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_client, 
                                     current_target_brand_name, target_brand_industry, current_meeting_data, 
@@ -944,21 +938,12 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
     print(f"Fetching and processing internal NBH data for target brand '{current_target_brand_name}'...")
     
     history_context_str = ""
-    
-    # Buckets for the Prompt
-    data_buckets = {
-        "physical_campaigns": [],
-        "digital_campaigns": [],
-        "case_studies": [],
-        "general_docs": []
-    }
-
-    # Flags for Alert Logic
+    data_buckets = {"physical_campaigns": [], "digital_campaigns":[], "case_studies": [], "general_docs":[]}
     is_overall_direct_follow_up = False
     has_other_past_interactions = False 
-    condensed_past_meetings_for_alert = []
+    condensed_past_meetings_for_alert =[]
 
-    # --- 1. MASTER SHEET LOGIC (Unchanged - Keeps history logic) ---
+    # --- 1. MASTER SHEET LOGIC (History) ---
     current_meeting_date_obj = current_meeting_data.get('start_time_obj')
     if isinstance(current_meeting_date_obj, datetime.datetime):
         current_meeting_date_only = current_meeting_date_obj.date()
@@ -966,21 +951,18 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         current_meeting_date_only = datetime.date.today()
 
     current_nbh_tokens = set()
-    for att in current_meeting_data.get('nbh_attendees', []):
-        if att.get('email'):
-            current_nbh_tokens.add(att['email'].lower().split('@')[0].strip()) 
+    for att in current_meeting_data.get('nbh_attendees',[]):
+        if att.get('email'): current_nbh_tokens.add(att['email'].lower().split('@')[0].strip()) 
         if att.get('name'):
              parts = att['name'].lower().split()
              for p in parts: 
                  if len(p) > 2: current_nbh_tokens.add(p)
 
     try:
-        # Checking Master Sheet
         header_req = sheets_service.spreadsheets().values().get(spreadsheetId=master_sheet_id, range="Meeting_data!A1:AZ1").execute()
         headers = header_req.get('values', [])[0]
         lower_headers = [str(h).strip().lower() for h in headers]
         
-        # (Simplified retrieval to save space - this assumes standard columns exist)
         try:
             col_brand = lower_headers.index("brand name")
             col_date = lower_headers.index("meeting date")
@@ -992,18 +974,16 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         else:
             data_req = sheets_service.spreadsheets().values().get(spreadsheetId=master_sheet_id, range="Meeting_data!A2:AZ").execute()
             data_rows = data_req.get('values', [])
-            found_meetings = []
+            found_meetings =[]
             target_clean = current_target_brand_name.lower().strip()
 
             for row in data_rows:
                 if len(row) <= col_brand: continue
                 sheet_brand = str(row[col_brand]).strip().lower()
                 
-                # Strict Brand Match for History
                 if target_clean in sheet_brand or sheet_brand in target_clean:
                     row_date_str = str(row[col_date]) if len(row) > col_date else ""
                     prev_nbh_raw = str(row[col_nbh_attendees]).lower() if len(row) > col_nbh_attendees else ""
-                    
                     is_attendee_match = any(token in prev_nbh_raw for token in current_nbh_tokens)
                     
                     meeting_info = {
@@ -1013,25 +993,15 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                         "nbh_team": prev_nbh_raw
                     }
 
-                    if is_attendee_match:
-                        found_meetings.append(meeting_info)
+                    if is_attendee_match: found_meetings.append(meeting_info)
                     else:
                         has_other_past_interactions = True
-                        condensed_past_meetings_for_alert.append({
-                            "date": row_date_str,
-                            "discussion_summary": "Different Team - Content Hidden",
-                            "nbh_team": prev_nbh_raw
-                        })
+                        condensed_past_meetings_for_alert.append({"date": row_date_str, "discussion_summary": "Different Team - Content Hidden", "nbh_team": prev_nbh_raw})
             
             if found_meetings:
                 is_overall_direct_follow_up = True
                 top = found_meetings[0]
-                history_context_str = (
-                    f"## PREVIOUS MEETING INTELLIGENCE (MATCHED)\n"
-                    f"**Last Meeting Date:** {top['date']}\n"
-                    f"**Last Discussion:** {top['discussion']}\n"
-                    f"**Last Actions:** {top['actions']}\n"
-                )
+                history_context_str = f"## PREVIOUS MEETING INTELLIGENCE (MATCHED)\n**Last Meeting Date:** {top['date']}\n**Last Discussion:** {top['discussion']}\n**Last Actions:** {top['actions']}\n"
             else:
                  history_context_str = "## PREVIOUS MEETING INTELLIGENCE: NONE (Fresh Meeting)\n"
 
@@ -1040,28 +1010,75 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         history_context_str = "## PREVIOUS MEETING INTELLIGENCE: Data access error.\n"
 
 
-    # --- 2. DEFINE INDUSTRY FAMILY MAPPING (Crucial for Fallback Relevance) ---
-    # We map the target industry to a list of keywords to look for in the sheets.
+    # --- 2. SMART AUDIENCE MAPPING (The Core Fix) ---
+    # Tier 2: Exact matching industry keywords
     STRICT_INDUSTRY_MAP = {
-        "FMCG": ["fmcg", "consumer", "food", "snack", "beverage", "dairy"],
-        "Food & Beverage": ["food", "beverage", "dairy", "snacks", "cafe", "restaurant", "fmcg"],
-        "Automotive & Transportation": ["automotive", "car", "bike", "transport", "vehicle", "ev", "scooter"],
-        "Real Estate & Construction": ["real estate", "builder", "property", "infra", "developer", "construction"],
-        "Education & Training": ["education", "school", "college", "edtech", "university", "learning"],
-        "Health & Wellness": ["health", "pharma", "fitness", "gym", "hospital", "wellness", "medical"],
-        "Finance & Fintech": ["finance", "bank", "insurance", "loan", "fintech", "wealth", "investment"],
-        "Retail": ["retail", "fashion", "lifestyle", "store", "apparel", "luxury", "jewellery"],
-        "Technology & Business Services": ["tech", "saas", "software", "it", "b2b", "consulting"],
-        "Beauty & Personal Care": ["beauty", "cosmetic", "skin", "hair", "personal care", "salon"],
-        "Interior & Home": ["interior", "furniture", "home", "decor", "paint", "furnishing"]
+        "FMCG":["fmcg", "consumer", "food", "snack", "beverage", "dairy", "grocery", "cpg"],
+        "Automotive & Transportation":["automotive", "car", "bike", "transport", "vehicle", "ev", "scooter", "auto", "mobility", "motor"],
+        "Food & Beverage":["food", "beverage", "dairy", "snacks", "cafe", "restaurant", "fmcg", "dining", "qsr", "drink"],
+        "Real Estate & Construction":["real estate", "builder", "property", "infra", "developer", "construction", "realty", "housing"],
+        "Education & Training":["education", "school", "college", "edtech", "university", "learning", "institute", "academy"],
+        "Healthcare":["health", "pharma", "fitness", "gym", "hospital", "wellness", "medical", "clinic", "care", "diagnostic"],
+        "Pharma":["health", "pharma", "fitness", "gym", "hospital", "wellness", "medical", "clinic", "care", "medicine"],
+        "Finance & Fintech":["finance", "bank", "insurance", "loan", "fintech", "wealth", "investment", "credit", "pay", "mutual fund"],
+        "Retail":["retail", "fashion", "lifestyle", "store", "apparel", "luxury", "jewellery", "shop", "supermarket"],
+        "E-Commerce":["ecommerce", "e-commerce", "online", "retail", "marketplace", "d2c", "delivery", "shopping"],
+        "Technology & Business Services":["tech", "saas", "software", "it", "b2b", "consulting", "service", "app"],
+        "Beauty & Personal Care":["beauty", "cosmetic", "skin", "hair", "personal care", "salon", "grooming", "makeup", "fragrance"],
+        "Home Goods & Electronics":["interior", "furniture", "home", "decor", "paint", "furnishing", "appliances", "electronics", "tv", "smart"],
+        "Hospitality & Travel":["travel", "hotel", "hospitality", "tourism", "flight", "booking", "holiday", "resort", "airline"],
+        "Marketing, Advertising & Media": ["marketing", "advertising", "media", "agency", "ott", "entertainment", "broadcast"],
+        "Apparel & Fashion":["apparel", "fashion", "clothing", "wear", "shoes", "retail", "garment"],
+        "Jewellery":["jewel", "gold", "diamond", "retail", "luxury", "accessory"],
+        "Membership & Local Services":["service", "membership", "local", "salon", "spa", "subscription"],
+        "Pets & Pet Services":["pet", "dog", "cat", "vet", "animal"],
+        "Gaming": ["gaming", "esports", "games", "entertainment"],
+        "Logistics & Warehousing":["logistics", "delivery", "warehouse", "supply", "b2b", "transport"],
+        "Energy, Renewables & Mining":["energy", "solar", "power", "renewable", "electric"],
+        "Manufacturing & Industrial":["manufacturing", "industrial", "factory", "b2b", "production"],
+        "Quick Commerce":["quick commerce", "qcommerce", "delivery", "grocery", "fmcg", "ecommerce", "blinkit", "zepto", "instamart"],
+        "OTT":["ott", "streaming", "media", "entertainment", "movie", "video", "content"]
+    }
+
+    # Tier 3: Similar Demographic/Audience Match
+    # Example: If a "Beauty" brand has no beauty campaigns, show "FMCG" or "Apparel" because they target the exact same households.
+    BROAD_AUDIENCE_MAP = {
+        # B2C Lifestyle/Household (Targets families, women, daily consumers)
+        "FMCG":["fmcg", "retail", "apparel", "beauty", "food", "grocery", "quick commerce"],
+        "Beauty & Personal Care":["beauty", "cosmetic", "fmcg", "apparel", "fashion", "jewellery", "retail", "wellness"],
+        "Food & Beverage": ["food", "beverage", "fmcg", "quick commerce", "retail", "grocery"],
+        "Apparel & Fashion": ["apparel", "fashion", "beauty", "retail", "jewellery", "lifestyle"],
+        "Retail": ["retail", "fmcg", "apparel", "beauty", "electronics", "home"],
+        "Jewellery":["jewel", "luxury", "beauty", "fashion", "apparel", "retail"],
+        "Quick Commerce": ["quick commerce", "fmcg", "food", "retail", "grocery", "delivery"],
+
+        # High-Ticket / Asset (Targets high net-worth decision makers)
+        "Automotive & Transportation":["automotive", "car", "real estate", "finance", "bank", "wealth", "luxury"],
+        "Real Estate & Construction": ["real estate", "property", "interior", "finance", "home", "builder", "automotive"],
+        "Finance & Fintech":["finance", "bank", "insurance", "investment", "wealth", "real estate", "fintech"],
+        "Home Goods & Electronics":["interior", "furniture", "electronics", "home", "real estate", "retail"],
+
+        # Services / General B2C
+        "Healthcare":["health", "wellness", "pharma", "fitness", "insurance", "medical"],
+        "Pharma": ["health", "wellness", "pharma", "fitness", "medical"],
+        "Education & Training":["education", "school", "edtech", "learning", "finance"],
+        "Hospitality & Travel":["travel", "hospitality", "hotel", "flight", "entertainment", "ott"],
+        "Marketing, Advertising & Media": ["media", "ott", "entertainment", "agency", "marketing"],
+        "OTT":["ott", "media", "entertainment", "gaming", "telecom"],
+        "Gaming":["gaming", "esports", "ott", "entertainment", "tech"],
+
+        # B2B / Tech / Industrial
+        "Technology & Business Services": ["tech", "saas", "software", "b2b", "service"],
+        "Logistics & Warehousing":["logistics", "supply", "b2b", "transport", "manufacturing"],
+        "Manufacturing & Industrial":["manufacturing", "industrial", "b2b", "logistics", "energy"],
+        "Energy, Renewables & Mining":["energy", "solar", "power", "industrial", "real estate"]
     }
     
-    # Get keywords for the specific target industry
-    # If industry not in map, default to using the industry name itself as the keyword
-    industry_keywords = STRICT_INDUSTRY_MAP.get(target_brand_industry, [target_brand_industry.lower()])
+    strict_keywords = STRICT_INDUSTRY_MAP.get(target_brand_industry, [target_brand_industry.lower()])
+    broad_keywords = BROAD_AUDIENCE_MAP.get(target_brand_industry, strict_keywords) # Fallback to strict if not in broad map
     target_brand_clean = current_target_brand_name.lower().strip()
 
-    print(f"    Looking for Campaigns/Case Studies. Strategy: Brand='{target_brand_clean}' OR Industry Keywords={industry_keywords}")
+    print(f"    Searching Campaigns/Case Studies for: Brand='{target_brand_clean}' -> Strict='{strict_keywords[:2]}' -> Broad Audience='{broad_keywords[:2]}'")
 
     # --- 3. PROCESS FILES (Campaigns & Case Studies) ---
     all_files_in_folder = list_files_in_gdrive_folder(drive_service, NBH_GDRIVE_FOLDER_ID)
@@ -1071,66 +1088,44 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
         fid = item['id']
         mtype = item.get('mimeType', '')
 
-        # Skip previous meetings sheet
         if FILE_NAME_NBH_PREVIOUS_MEETINGS_GSHEET.lower() in fname.lower(): continue
 
-        # --- A. LIVE CAMPAIGNS SHEETS ---
         if FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
             content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
-            # CALL TIERED EXTRACTION
-            extracted_rows = extract_relevant_rows_tiered(content, fname, target_brand_clean, industry_keywords)
-            if extracted_rows:
-                data_buckets["physical_campaigns"].extend(extracted_rows)
+            extracted_rows = extract_smart_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, broad_keywords)
+            if extracted_rows: data_buckets["physical_campaigns"].extend(extracted_rows)
 
         elif FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
             content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
-            # CALL TIERED EXTRACTION
-            extracted_rows = extract_relevant_rows_tiered(content, fname, target_brand_clean, industry_keywords)
-            if extracted_rows:
-                data_buckets["digital_campaigns"].extend(extracted_rows)
+            extracted_rows = extract_smart_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, broad_keywords)
+            if extracted_rows: data_buckets["digital_campaigns"].extend(extracted_rows)
 
-        # --- B. CASE STUDIES (Fixed: Removed 'pass', Added Extraction) ---
         elif FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in fname.lower():
-             print(f"      Processing Case Studies Sheet: {fname}")
              content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
-             # CALL TIERED EXTRACTION
-             extracted_rows = extract_relevant_rows_tiered(content, fname, target_brand_clean, industry_keywords)
-             if extracted_rows:
-                 data_buckets["case_studies"].extend(extracted_rows)
+             extracted_rows = extract_smart_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, broad_keywords)
+             if extracted_rows: data_buckets["case_studies"].extend(extracted_rows)
 
-        # --- C. PDFS ---
         elif 'pdf' in mtype.lower() and (FILE_NAME_PITCH_DECK_PDF.lower() in fname.lower() or FILE_NAME_CASE_STUDIES_PDF.lower() in fname.lower()):
              content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
              if isinstance(content, str) and len(content) > 100:
                  data_buckets["general_docs"].append(f"## Reference Document: {fname}\n{content[:5000]}...\n")
 
     # --- 4. FINAL STRING ASSEMBLY (Formatting for Prompt) ---
-    
-    # 1. Campaigns Section
     campaigns_str = "## NBH CAMPAIGN EXAMPLES (From Live Sheets)\n"
     
     campaigns_str += "### PHYSICAL CAMPAIGNS\n"
-    if data_buckets["physical_campaigns"]:
-        campaigns_str += "\n".join(data_buckets["physical_campaigns"])
-    else:
-        campaigns_str += "No relevant physical campaign data found."
+    if data_buckets["physical_campaigns"]: campaigns_str += "\n".join(data_buckets["physical_campaigns"])
+    else: campaigns_str += "No physical campaign data found for this demographic."
         
     campaigns_str += "\n\n### DIGITAL CAMPAIGNS\n"
-    if data_buckets["digital_campaigns"]:
-        campaigns_str += "\n".join(data_buckets["digital_campaigns"])
-    else:
-        campaigns_str += "No relevant digital campaign data found."
+    if data_buckets["digital_campaigns"]: campaigns_str += "\n".join(data_buckets["digital_campaigns"])
+    else: campaigns_str += "No digital campaign data found for this demographic."
 
-    # 2. Case Studies Section
     case_studies_str = "\n\n## NBH CASE STUDIES (From Consolidated Sheet)\n"
-    
     case_studies_str += "### RELEVANT CASE STUDIES\n"
-    if data_buckets["case_studies"]:
-         case_studies_str += "\n".join(data_buckets["case_studies"])
-    else:
-         case_studies_str += "No relevant case study data found."
+    if data_buckets["case_studies"]: case_studies_str += "\n".join(data_buckets["case_studies"])
+    else: case_studies_str += "No case study data found for this demographic."
 
-    # Combine all parts
     final_llm_string = (
         f"{history_context_str}\n\n"
         f"{campaigns_str}\n"
