@@ -1111,7 +1111,7 @@ def get_upcoming_meetings(calendar_service, calendar_id='primary', time_delta_ho
         events = events_result.get('items', [])
         
         # ✅ FILTER OUT TASK EVENTS (Skip events starting with task markers)
-        TASK_PREFIXES = ['✅ TASK', '☑ TASK', 'TASK:', '[TASK]']
+        TASK_PREFIXES = ['✅ TASK', '☑ TASK', 'TASK:', '[TASK]', 'Action Items:']
         filtered_events = []
         
         for event in events:
