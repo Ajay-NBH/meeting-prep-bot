@@ -968,11 +968,25 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
             data_rows = data_req.get('values', [])
             found_meetings =[]
             target_clean = current_target_brand_name.lower().strip()
+            
+            # ---> FIX 1: Get current meeting ID to prevent self-matching
+            current_meeting_id = current_meeting_data.get('id', '')
 
             for row in data_rows:
                 if len(row) <= col_brand: continue
+                
+                # ---> FIX 1: Skip the row if it's the exact same meeting we are currently processing
+                row_meeting_id = str(row[0]).strip() if len(row) > 0 else ""
+                if row_meeting_id and row_meeting_id == current_meeting_id:
+                    continue
+
                 sheet_brand = str(row[col_brand]).strip().lower()
                 
+                # ---> FIX 2: Prevent empty string bugs and skip 'unknown' 
+                if not sheet_brand or sheet_brand == 'unknown' or not target_clean or target_clean == 'unknown':
+                    continue
+                
+                # STRICTER MATCHING LOGIC
                 if target_clean in sheet_brand or sheet_brand in target_clean:
                     row_date_str = str(row[col_date]) if len(row) > col_date else ""
                     prev_nbh_raw = str(row[col_nbh_attendees]).lower() if len(row) > col_nbh_attendees else ""
