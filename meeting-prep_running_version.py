@@ -862,7 +862,7 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
     """
     Scans sheet from BOTTOM (Newest) to TOP (Oldest).
     Priority 1: Exact Brand Match (e.g., Haldiram's -> Haldiram's)
-    Priority 2: Strict Industry Match ONLY (e.g., Haldiram's -> Food/Beverage)
+    Priority 2: Strict Industry Match OR Industry Keyword in Brand Name
     NO CROSS-INDUSTRY FALLBACKS.
     """
     matches_brand = []
@@ -879,7 +879,7 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         lower_h =[str(h).strip().lower() for h in header_vals]
         for idx, h in enumerate(lower_h):
             if "brand" in h: brand_col = idx
-            if any(x in h for x in["industry", "category", "vertical", "client", "sector"]): ind_col = idx
+            if any(x in h for x in["industry", "category", "vertical"]): ind_col = idx
             if any(x in h for x in ["year", "date", "timestamp"]): date_col = idx
 
     data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else[]
@@ -894,7 +894,7 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         for i in range(len(header_vals)):
             if i < len(vals):
                 val = str(vals[i]).strip()
-                if val and val.lower() not in ['nan', 'none', '', 'n/a']:
+                if val and val.lower() not in['nan', 'none', '', 'n/a']:
                     row_items.append(f"{header_vals[i]}: {val}")
         entry = " | ".join(row_items)
         if len(entry) < 15: continue
@@ -905,9 +905,20 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         # Priority 1: Exact Brand Match
         if brand_clean and len(brand_clean) > 2 and (brand_clean in row_brand or row_brand in brand_clean):
             matches_brand.append(entry)
-        # Priority 2: Strict Industry Match
-        elif strict_keywords and ind_col != -1 and any(k in row_ind for k in strict_keywords):
-            if len(matches_strict) < 5: 
+            
+        # Priority 2: Strict Industry Match OR Keyword in Brand Name
+        elif strict_keywords:
+            is_match = False
+            
+            # Check 1: Does the Industry Column match?
+            if ind_col != -1 and any(k in row_ind for k in strict_keywords):
+                is_match = True
+            # Check 2 (Fallback): If Industry column is blank/missing, does the Brand Name contain an industry keyword?
+            # (e.g., "Indo British School" contains "school" -> matches Education)
+            elif brand_col != -1 and any(k in row_brand for k in strict_keywords if len(k) > 3):
+                is_match = True
+                
+            if is_match and len(matches_strict) < 5: 
                 matches_strict.append(entry)
 
     # Return Logic: STRICTLY Brand or STRICTLY Industry. Nothing else.
