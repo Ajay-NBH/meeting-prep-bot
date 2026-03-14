@@ -922,10 +922,9 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
 
     # Return Logic
     if matches_brand:
-        return ["**MATCHED BRAND DATA:**"] + matches_brand[:5]
+        return ["**Exact Brand Matches Found:**"] + matches_brand[:5]
     elif matches_strict:
-        primary_kw = strict_keywords[0].title() if strict_keywords else "Related"
-        return [f"**STRICT INDUSTRY EXAMPLES ({primary_kw}):**"] + matches_strict[:5]
+        return ["**Relevant Industry Campaigns Found:**"] + matches_strict[:5]
     
     return[]
 
