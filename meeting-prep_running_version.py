@@ -902,19 +902,23 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
         
         # Priority 1: Exact Brand Match
-        if brand_clean and len(brand_clean) > 2 and (brand_clean in row_brand or row_brand in brand_clean):
-            matches_brand.append(entry)
-            continue # Skip to next row if exact match found
+        # FIX: Added 'row_brand and len(row_brand) > 2' to prevent empty cells from matching everything
+        if brand_clean and len(brand_clean) > 2 and row_brand and len(row_brand) > 2:
+            if (brand_clean in row_brand) or (row_brand in brand_clean):
+                matches_brand.append(entry)
+                continue # Skip to next row if exact match found
             
         # Priority 2: Strict Industry Match OR Keyword in Brand Name
-        if strict_keywords:
+        # FIX: Sanitize keywords to prevent empty string matching
+        valid_keywords =[k.strip().lower() for k in strict_keywords if k and len(k.strip()) > 2]
+        
+        if valid_keywords:
             is_match = False
             # Check 1: Does the Industry Column match?
-            if ind_col != -1 and any(k in row_ind for k in strict_keywords):
+            if ind_col != -1 and row_ind and any(k in row_ind for k in valid_keywords):
                 is_match = True
             # Check 2 (Fallback): If Industry column is blank, does the Brand Name contain an industry keyword?
-            # (e.g., "Geri Care Hospital" contains "hospital" -> matches Healthcare)
-            elif brand_col != -1 and any(k in row_brand for k in strict_keywords if len(k) > 3):
+            elif brand_col != -1 and row_brand and any(k in row_brand for k in valid_keywords):
                 is_match = True
                 
             if is_match and len(matches_strict) < 5: 
