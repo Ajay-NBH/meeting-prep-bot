@@ -1447,17 +1447,19 @@ def is_brand_well_known(gemini_llm_client, brand_name):
     """Asks the LLM if the brand is famous enough to generate accurate logos."""
     if not gemini_llm_client: return False
     
-    prompt = f"Is the brand '{brand_name}' a widely recognized national or global brand with a highly recognizable logo? Answer strictly with 'YES' or 'NO'."
+    prompt = f"Is the brand '{brand_name}' a widely recognized national or global brand? Answer strictly with 'YES' or 'NO'."
     try:
         response = gemini_llm_client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.0)
         )
-        return "YES" in response.text.upper()
+        text_response = response.text.strip().upper()
+        print(f"  🧠 Brand recognition check for '{brand_name}': {text_response}")
+        return "YES" in text_response
     except Exception as e:
-        print(f"  Error checking brand recognition: {e}")
-        return False
+        print(f"  ⚠️ Error checking brand recognition: {e}. Defaulting to True to attempt image generation.")
+        return True # Fallback to True so we at least try!
 
 def generate_brand_creative(gemini_llm_client, brand_name):
     """Generates a 3-in-1 vertical mockup using Imagen 3."""
@@ -1467,6 +1469,7 @@ def generate_brand_creative(gemini_llm_client, brand_name):
     
     theme = "Holi festival theme with subtle, elegant splashes of color"
     
+    # REMOVED PEOPLE from the prompt to prevent Google Safety Filter blocks
     image_prompt = f"""
     Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom.
     Each section must look like a candid smartphone photo taken inside a standard Indian residential society. Use natural daylight.
@@ -1475,12 +1478,10 @@ def generate_brand_creative(gemini_llm_client, brand_name):
     - TOP SECTION — GATE BRANDING
       - Standard Indian apartment complex entrance. Black wrought-iron sliding gate.
       - A thin, flat 4ft x 3ft horizontal ACP board displaying a '{brand_name}' ad, mounted on the gate bars.
-      - A watchman at the gatehouse casually checking a logbook.
 
     - MIDDLE SECTION — LIFT BRANDING
       - Brushed stainless steel elevator interior.
       - An A3 size printed poster in a thin clean white acrylic frame showing the '{brand_name}' ad.
-      - A resident entering the lift holding a grocery bag.
 
     - BOTTOM SECTION — DIGITAL IN-APP (PAC)
       - A clean digital UI mockup of a mobile app.
@@ -1490,7 +1491,7 @@ def generate_brand_creative(gemini_llm_client, brand_name):
     LAYOUT RULES:
     - Show all 3 panels vertically. Separate with a thin white line.
     - The '{brand_name}' branding MUST be perfectly sharp.
-    - Overall feel: Real, natural, candid Indian community life.
+    - Overall feel: Real, natural, candid Indian community life. Do NOT include any people or faces in this image.
     """
     
     try:
@@ -1499,14 +1500,34 @@ def generate_brand_creative(gemini_llm_client, brand_name):
             prompt=image_prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=1,
-                output_mime_type="image/jpeg",
                 aspect_ratio="9:16" 
             )
         )
+        print(f"  ✅ 3-in-1 Image successfully generated for {brand_name}!")
         return result.generated_images[0].image.image_bytes
+        
     except Exception as e:
-        print(f"  ⚠️ Failed to generate image for {brand_name}: {e}")
-        return None
+        print(f"  ⚠️ Failed to generate 3-in-1 image for {brand_name}. Error: {e}")
+        
+        # FALLBACK: If the complex 9:16 image fails, try a simple 1:1 Lift Banner
+        try:
+            print(f"  🔄 Attempting fallback image generation for {brand_name}...")
+            fallback_prompt = f"A highly realistic photograph of a professional advertisement poster for the brand '{brand_name}' mounted inside a modern stainless steel elevator. {theme}. No people in the image."
+            
+            result = gemini_llm_client.models.generate_images(
+                model='imagen-3.0-generate-001',
+                prompt=fallback_prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1, 
+                    aspect_ratio="1:1"
+                )
+            )
+            print(f"  ✅ Fallback image successfully generated for {brand_name}!")
+            return result.generated_images[0].image.image_bytes
+            
+        except Exception as fallback_e:
+            print(f"  ❌ Fallback image generation also failed: {fallback_e}")
+            return None
         
 # --- Email Sending ---
 def create_email_message(sender, to_emails_list, subject, message_text_html):
