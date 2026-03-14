@@ -1443,91 +1443,69 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
 # ==============================================================================
 # AI CREATIVE GENERATION (TEST MODE FUNCTIONS)
 # ==============================================================================
-def is_brand_well_known(gemini_llm_client, brand_name):
-    """Asks the LLM if the brand is famous enough to generate accurate logos."""
-    if not gemini_llm_client: return False
+def get_brand_visual_context(gemini_llm_client, brand_name):
+    """Uses Google Search to find brand context. Returns None if completely unknown."""
+    if not gemini_llm_client: return None
     
-    prompt = f"Is the brand '{brand_name}' a widely recognized national or global brand? Answer strictly with 'YES' or 'NO'."
+    print(f"  🔍 Searching web for visual context on '{brand_name}'...")
+    prompt = f"""
+    Use Google Search to find information about the brand '{brand_name}' in India.
+    What is their industry, core product/service, and primary brand colors?
+    If this brand does not exist or is too obscure to find clear business information, reply EXACTLY with 'UNKNOWN_BRAND'.
+    Otherwise, provide a 1-sentence description of what they do and their likely brand colors to help an AI draw an ad for them.
+    """
     try:
         response = gemini_llm_client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.0)
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            )
         )
-        text_response = response.text.strip().upper()
-        print(f"  🧠 Brand recognition check for '{brand_name}': {text_response}")
-        return "YES" in text_response
+        text_response = response.text.strip()
+        if "UNKNOWN_BRAND" in text_response.upper():
+            print(f"  ⏭️ Brand '{brand_name}' is too obscure on Google. Skipping image generation.")
+            return None
+            
+        print(f"  ✅ Found context for '{brand_name}': {text_response}")
+        return text_response
     except Exception as e:
-        print(f"  ⚠️ Error checking brand recognition: {e}. Defaulting to True to attempt image generation.")
-        return True # Fallback to True so we at least try!
+        print(f"  ⚠️ Error fetching brand context: {e}")
+        return None 
 
-def generate_brand_creative(gemini_llm_client, brand_name):
-    """Generates a 3-in-1 vertical mockup using Imagen 3."""
+def generate_brand_creative(gemini_llm_client, brand_name, brand_context):
+    """Generates a mockup using Imagen 3, guided by search context."""
     if not gemini_llm_client: return None
     
     print(f"  🎨 Generating AI Mockup Creatives for {brand_name}...")
-    
     theme = "Holi festival theme with subtle, elegant splashes of color"
     
-    # REMOVED PEOPLE from the prompt to prevent Google Safety Filter blocks
     image_prompt = f"""
     Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom.
     Each section must look like a candid smartphone photo taken inside a standard Indian residential society. Use natural daylight.
-    The brand is '{brand_name}'. Incorporate a {theme} into the ad creatives.
+    Create an advertisement for the brand '{brand_name}'. 
+    Context about the brand to help you design the ad: {brand_context}
+    Incorporate a {theme} into the ad creatives.
 
-    - TOP SECTION — GATE BRANDING
-      - Standard Indian apartment complex entrance. Black wrought-iron sliding gate.
-      - A thin, flat 4ft x 3ft horizontal ACP board displaying a '{brand_name}' ad, mounted on the gate bars.
+    - TOP SECTION — GATE BRANDING: A flat 4ft x 3ft horizontal ACP board displaying a '{brand_name}' ad, mounted on a black wrought-iron sliding gate.
+    - MIDDLE SECTION — LIFT BRANDING: Brushed stainless steel elevator interior. An A3 size printed poster showing the '{brand_name}' ad.
+    - BOTTOM SECTION — DIGITAL IN-APP (PAC): A clean digital UI mockup of a mobile app. A white card overlay with a green checkmark. Below the card, a square advertisement for '{brand_name}'.
 
-    - MIDDLE SECTION — LIFT BRANDING
-      - Brushed stainless steel elevator interior.
-      - An A3 size printed poster in a thin clean white acrylic frame showing the '{brand_name}' ad.
-
-    - BOTTOM SECTION — DIGITAL IN-APP (PAC)
-      - A clean digital UI mockup of a mobile app.
-      - A white card overlay: Green checkmark icon, bold text "Pre approval created", small text "for your {brand_name} delivery".
-      - Below the card, a high-resolution square advertisement for '{brand_name}'.
-
-    LAYOUT RULES:
-    - Show all 3 panels vertically. Separate with a thin white line.
-    - The '{brand_name}' branding MUST be perfectly sharp.
-    - Overall feel: Real, natural, candid Indian community life. Do NOT include any people or faces in this image.
+    LAYOUT RULES: Show all 3 panels vertically. Separate with a thin white line. Do NOT include any people or faces in this image.
     """
     
     try:
         result = gemini_llm_client.models.generate_images(
             model='imagen-3.0-generate-001',
             prompt=image_prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="9:16" 
-            )
+            config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="9:16")
         )
-        print(f"  ✅ 3-in-1 Image successfully generated for {brand_name}!")
+        print(f"  ✅ Image successfully generated for {brand_name}!")
         return result.generated_images[0].image.image_bytes
-        
     except Exception as e:
-        print(f"  ⚠️ Failed to generate 3-in-1 image for {brand_name}. Error: {e}")
-        
-        # FALLBACK: If the complex 9:16 image fails, try a simple 1:1 Lift Banner
-        try:
-            print(f"  🔄 Attempting fallback image generation for {brand_name}...")
-            fallback_prompt = f"A highly realistic photograph of a professional advertisement poster for the brand '{brand_name}' mounted inside a modern stainless steel elevator. {theme}. No people in the image."
-            
-            result = gemini_llm_client.models.generate_images(
-                model='imagen-3.0-generate-001',
-                prompt=fallback_prompt,
-                config=types.GenerateImagesConfig(
-                    number_of_images=1, 
-                    aspect_ratio="1:1"
-                )
-            )
-            print(f"  ✅ Fallback image successfully generated for {brand_name}!")
-            return result.generated_images[0].image.image_bytes
-            
-        except Exception as fallback_e:
-            print(f"  ❌ Fallback image generation also failed: {fallback_e}")
-            return None
+        print(f"  ⚠️ Failed to generate image for {brand_name}. Error: {e}")
+        return None # Return None silently on failure
         
 # --- Email Sending ---
 def create_email_message(sender, to_emails_list, subject, message_text_html):
@@ -1627,6 +1605,7 @@ def send_brief_email(gmail_service, meeting_data, brief_content, image_bytes=Non
                         <img src="cid:brand_creative" alt="Brand Creative Mockup">
                     </div>
             """
+        # Notice: The error box logic is completely removed. If no image, it just skips this section.
 
         email_body_html += """
                 </div>
@@ -2337,13 +2316,14 @@ def main():
         is_test_mode = "[TEST_CREATIVE]" in meeting_data['title'].upper()
 
         if is_test_mode and generated_brief and "Error:" not in generated_brief:
-            print(f"  🧪 TEST MODE DETECTED: Checking if '{meeting_data['brand_name']}' is famous enough for image generation...")
-            is_famous = is_brand_well_known(gemini_llm_client, meeting_data['brand_name'])
+            print(f"  🧪 TEST MODE DETECTED: Attempting image generation for '{meeting_data['brand_name']}'...")
             
-            if is_famous:
-                image_bytes = generate_brand_creative(gemini_llm_client, meeting_data['brand_name'])
-            else:
-                print(f"  ⏭️ Skipping image generation: '{meeting_data['brand_name']}' is not recognized as a major brand by the AI.")
+            # Step 1: Use Google Search to find out what the brand is
+            brand_context = get_brand_visual_context(gemini_llm_client, meeting_data['brand_name'])
+            
+            # Step 2: If we found info on Google, generate the image using that info!
+            if brand_context:
+                image_bytes = generate_brand_creative(gemini_llm_client, meeting_data['brand_name'], brand_context)
 
         FEEDBACK_FORM_URL = "https://forms.gle/Ho9XLKsuGYhWBrBw7"
         feedback_footer = f"\n\n---\nGive Your Feedback on The Pre Meeting Briefs. \n👉[Click Here to Fill the Feedback Form]({FEEDBACK_FORM_URL})\n"
