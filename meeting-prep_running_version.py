@@ -861,33 +861,32 @@ def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, 
 def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean, strict_keywords):
     """
     Scans sheet from BOTTOM (Newest) to TOP (Oldest).
-    Priority 1: Exact Brand Match (e.g., Haldiram's -> Haldiram's)
+    Priority 1: Exact Brand Match
     Priority 2: Strict Industry Match OR Industry Keyword in Brand Name
-    NO CROSS-INDUSTRY FALLBACKS.
     """
     matches_brand = []
     matches_strict =[]
     
     if not isinstance(file_data_obj, list) or not file_data_obj: 
-        return[]
+        return []
     
     # Detect Columns
     header_vals = file_data_obj[0].get("header", []) if isinstance(file_data_obj[0], dict) else[]
     brand_col, ind_col, date_col = -1, -1, -1
 
     if header_vals:
-        lower_h =[str(h).strip().lower() for h in header_vals]
+        lower_h = [str(h).strip().lower() for h in header_vals]
         for idx, h in enumerate(lower_h):
             if "brand" in h: brand_col = idx
-            if any(x in h for x in["industry", "category", "vertical"]): ind_col = idx
+            if any(x in h for x in ["industry", "category", "vertical"]): ind_col = idx
             if any(x in h for x in ["year", "date", "timestamp"]): date_col = idx
 
-    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else[]
+    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else []
     if not data_rows: return[]
 
     # Iterate Newest First (Bottom -> Top)
     for row_info in reversed(data_rows):
-        vals = row_info.get('values',[])
+        vals = row_info.get('values', [])
         if not vals: continue
         
         row_items =[]
@@ -905,28 +904,28 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         # Priority 1: Exact Brand Match
         if brand_clean and len(brand_clean) > 2 and (brand_clean in row_brand or row_brand in brand_clean):
             matches_brand.append(entry)
+            continue # Skip to next row if exact match found
             
         # Priority 2: Strict Industry Match OR Keyword in Brand Name
-        elif strict_keywords:
+        if strict_keywords:
             is_match = False
-            
             # Check 1: Does the Industry Column match?
             if ind_col != -1 and any(k in row_ind for k in strict_keywords):
                 is_match = True
-            # Check 2 (Fallback): If Industry column is blank/missing, does the Brand Name contain an industry keyword?
-            # (e.g., "Indo British School" contains "school" -> matches Education)
+            # Check 2 (Fallback): If Industry column is blank, does the Brand Name contain an industry keyword?
+            # (e.g., "Geri Care Hospital" contains "hospital" -> matches Healthcare)
             elif brand_col != -1 and any(k in row_brand for k in strict_keywords if len(k) > 3):
                 is_match = True
                 
             if is_match and len(matches_strict) < 5: 
                 matches_strict.append(entry)
 
-    # Return Logic: STRICTLY Brand or STRICTLY Industry. Nothing else.
+    # Return Logic
     if matches_brand:
         return ["**MATCHED BRAND DATA:**"] + matches_brand[:5]
     elif matches_strict:
         primary_kw = strict_keywords[0].title() if strict_keywords else "Related"
-        return[f"**STRICT INDUSTRY EXAMPLES ({primary_kw}):**"] + matches_strict[:5]
+        return [f"**STRICT INDUSTRY EXAMPLES ({primary_kw}):**"] + matches_strict[:5]
     
     return[]
 
@@ -1086,32 +1085,28 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
              extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords)
              if extracted_rows: data_buckets["case_studies"].extend(extracted_rows)
 
-        elif 'pdf' in mtype.lower() and (FILE_NAME_PITCH_DECK_PDF.lower() in fname.lower() or FILE_NAME_CASE_STUDIES_PDF.lower() in fname.lower()):
-             content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
-             if isinstance(content, str) and len(content) > 100:
-                 data_buckets["general_docs"].append(f"## Reference Document: {fname}\n{content[:5000]}...\n")
+        # FIX: Removed the PDF parsing block entirely to prevent LLM context pollution and hallucinations.
 
     # --- 4. FINAL STRING ASSEMBLY (Formatting for Prompt) ---
     campaigns_str = "## NBH CAMPAIGN EXAMPLES (From Live Sheets)\n"
     
     campaigns_str += "### PHYSICAL CAMPAIGNS\n"
     if data_buckets["physical_campaigns"]: campaigns_str += "\n".join(data_buckets["physical_campaigns"])
-    else: campaigns_str += "No physical campaign data available for this specific brand/industry."
+    else: campaigns_str += "DATA_EMPTY: No physical campaign data available for this specific brand/industry."
         
     campaigns_str += "\n\n### DIGITAL CAMPAIGNS\n"
     if data_buckets["digital_campaigns"]: campaigns_str += "\n".join(data_buckets["digital_campaigns"])
-    else: campaigns_str += "No digital campaign data available for this specific brand/industry."
+    else: campaigns_str += "DATA_EMPTY: No digital campaign data available for this specific brand/industry."
 
     case_studies_str = "\n\n## NBH CASE STUDIES (From Consolidated Sheet)\n"
     case_studies_str += "### RELEVANT CASE STUDIES\n"
     if data_buckets["case_studies"]: case_studies_str += "\n".join(data_buckets["case_studies"])
-    else: case_studies_str += "No case study data available for this specific brand/industry."
+    else: case_studies_str += "DATA_EMPTY: No case study data available for this specific brand/industry."
 
     final_llm_string = (
         f"{history_context_str}\n\n"
         f"{campaigns_str}\n"
-        f"{case_studies_str}\n\n" + 
-        "\n".join(data_buckets["general_docs"])
+        f"{case_studies_str}\n"
     )
     
     return {
