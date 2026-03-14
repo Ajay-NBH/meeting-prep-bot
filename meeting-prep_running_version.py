@@ -1440,6 +1440,74 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
              return "Error: Gemini API quota likely exceeded. Please check your Google Cloud/AI Studio quotas."
         return f"Error: Exception during Gemini call: {e}"
 
+# ==============================================================================
+# AI CREATIVE GENERATION (TEST MODE FUNCTIONS)
+# ==============================================================================
+def is_brand_well_known(gemini_llm_client, brand_name):
+    """Asks the LLM if the brand is famous enough to generate accurate logos."""
+    if not gemini_llm_client: return False
+    
+    prompt = f"Is the brand '{brand_name}' a widely recognized national or global brand with a highly recognizable logo? Answer strictly with 'YES' or 'NO'."
+    try:
+        response = gemini_llm_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.0)
+        )
+        return "YES" in response.text.upper()
+    except Exception as e:
+        print(f"  Error checking brand recognition: {e}")
+        return False
+
+def generate_brand_creative(gemini_llm_client, brand_name):
+    """Generates a 3-in-1 vertical mockup using Imagen 3."""
+    if not gemini_llm_client: return None
+    
+    print(f"  🎨 Generating AI Mockup Creatives for {brand_name}...")
+    
+    theme = "Holi festival theme with subtle, elegant splashes of color"
+    
+    image_prompt = f"""
+    Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom.
+    Each section must look like a candid smartphone photo taken inside a standard Indian residential society. Use natural daylight.
+    The brand is '{brand_name}'. Incorporate a {theme} into the ad creatives.
+
+    - TOP SECTION — GATE BRANDING
+      - Standard Indian apartment complex entrance. Black wrought-iron sliding gate.
+      - A thin, flat 4ft x 3ft horizontal ACP board displaying a '{brand_name}' ad, mounted on the gate bars.
+      - A watchman at the gatehouse casually checking a logbook.
+
+    - MIDDLE SECTION — LIFT BRANDING
+      - Brushed stainless steel elevator interior.
+      - An A3 size printed poster in a thin clean white acrylic frame showing the '{brand_name}' ad.
+      - A resident entering the lift holding a grocery bag.
+
+    - BOTTOM SECTION — DIGITAL IN-APP (PAC)
+      - A clean digital UI mockup of a mobile app.
+      - A white card overlay: Green checkmark icon, bold text "Pre approval created", small text "for your {brand_name} delivery".
+      - Below the card, a high-resolution square advertisement for '{brand_name}'.
+
+    LAYOUT RULES:
+    - Show all 3 panels vertically. Separate with a thin white line.
+    - The '{brand_name}' branding MUST be perfectly sharp.
+    - Overall feel: Real, natural, candid Indian community life.
+    """
+    
+    try:
+        result = gemini_llm_client.models.generate_images(
+            model='imagen-3.0-generate-001',
+            prompt=image_prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                output_mime_type="image/jpeg",
+                aspect_ratio="9:16" 
+            )
+        )
+        return result.generated_images[0].image.image_bytes
+    except Exception as e:
+        print(f"  ⚠️ Failed to generate image for {brand_name}: {e}")
+        return None
+        
 # --- Email Sending ---
 def create_email_message(sender, to_emails_list, subject, message_text_html):
     # ... (Using MIMEText with 'html' for better formatting) ...
@@ -1473,75 +1541,119 @@ def send_gmail_message(gmail_service, user_id, message_body):
         print(f'  An error occurred sending email: {error}')
         return None
 
-def send_brief_email(gmail_service, meeting_data, brief_content):
-    """
-    Sends a pre-meeting brief email to NBH internal attendees for a given meeting.
-    
-    The function filters out excluded emails from the NBH attendee list, converts the brief content from markdown to HTML, formats the email body, and sends the email using the Gmail API. If no eligible recipients are found, the function exits without sending an email.
-    """
-    EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in","pia.hood@nobroker.in"} # Define a set of excluded emails
+def send_brief_email(gmail_service, meeting_data, brief_content, image_bytes=None, use_beautiful_html=False):
+    """Sends a pre-meeting brief email. Uses basic HTML by default, or beautiful HTML in test mode."""
+    EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in","pia.hood@nobroker.in"}
 
-    nbh_recipient_emails = []
-    attendees_list = meeting_data.get('nbh_attendees', []) 
-    if isinstance(attendees_list, list): # Extra safety check
+    nbh_recipient_emails =[]
+    attendees_list = meeting_data.get('nbh_attendees',[]) 
+    if isinstance(attendees_list, list):
         for att in attendees_list:
-            # Ensure 'att' is a dictionary and 'email' key exists
             if isinstance(att, dict) and 'email' in att:
                 attendee_email = att.get('email')
                 if attendee_email and isinstance(attendee_email, str) and attendee_email.lower() not in EXCLUDED_EMAILS:
                     nbh_recipient_emails.append(attendee_email)
     
-    # For testing, override recipients:
-    # nbh_recipient_emails = [ADMIN_EMAIL_FOR_NOTIFICATIONS]
-    # print(f"DEBUG: Intended brief recipients: {nbh_recipient_emails}")
-
     if not nbh_recipient_emails:
-        print(f"  No NBH recipients (other than brandvmeet) for '{meeting_data['title']}'. Brief not emailed.")
+        print(f"  No NBH recipients for '{meeting_data['title']}'. Brief not emailed.")
         return
 
-    email_subject = f"Pre-Meeting Brief: {meeting_data['title']} with {meeting_data['brand_name']}"
+    email_subject = f"Pre-Meeting Brief: {meeting_data['title']} | {meeting_data['brand_name']}"
     
-    # Convert markdown-like brief (from LLM) to basic HTML for email
+    # Convert markdown to HTML
     html_brief_content = markdown.markdown(brief_content)
-    # html_brief_content = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', html_brief_content) # Basic bold
-    # Add more markdown to HTML conversions if needed (e.g., for lists, headers)  
-    # For headers like # Detail Report, ## Sub-header
-    # html_brief_content = html_brief_content.replace("# ", "<h3>").replace("\n", "</h3><br>") # Simple h3 for main headers
     
-    email_body_html = f"""
-    <html><body>
-    <p>Hello Team,</p>
-    <p>Please find the pre-meeting brief for your upcoming meeting:</p>
-    <hr>
-    {html_brief_content}
-    <hr>
-    <p>Best regards,<br>NBH Meeting Prep Agent</p>
-    </body></html>
-    """
-    email_message = create_email_message(
-        sender=AGENT_EMAIL,
-        to_emails_list=nbh_recipient_emails,
-        subject=email_subject,
-        message_text_html=email_body_html
-    )
-    print(f"  FINAL CHECK: Sending brief for '{meeting_data['title']}' TO: {nbh_recipient_emails} FROM: {AGENT_EMAIL}")
-    send_gmail_message(gmail_service, 'me', email_message)
+    if use_beautiful_html:
+        # ====================================================================
+        # 🧪 TEST MODE: PROFESSIONAL HTML TEMPLATE (Matches MoM Style)
+        # ====================================================================
+        email_body_html = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f7f6; color: #333; line-height: 1.6; padding: 20px; }}
+                .container {{ max-width: 850px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #e0e0e0; }}
+                .header {{ background-color: #ffffff; padding: 25px 30px; border-bottom: 2px solid #1a73e8; }}
+                .header h2 {{ margin: 0; color: #1a73e8; font-size: 20px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }}
+                .content {{ padding: 30px; }}
+                .content h3 {{ color: #1a73e8; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-top: 25px; font-size: 16px; }}
+                .content p, .content li {{ font-size: 14px; color: #444; }}
+                .brief-box {{ background-color: #f8fafd; padding: 20px; border-radius: 8px; border: 1px solid #e6eff8; margin-bottom: 25px; }}
+                .footer {{ background-color: #f8f9fa; padding: 15px 30px; text-align: center; font-size: 12px; color: #777; border-top: 1px solid #eee; }}
+                .creative-box {{ margin-top: 30px; padding: 20px; background-color: #ffffff; border-radius: 8px; text-align: center; border: 1px dashed #ccc; }}
+                .creative-box img {{ max-width: 100%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2>NBH INTELLIGENCE REPORT</h2>
+                </div>
+                <div class="content">
+                    <p>Hi Team,</p>
+                    <p>Please find the Pre-Meeting Intelligence Brief for your upcoming meeting with <b>{meeting_data['brand_name']}</b>.</p>
+                    
+                    <div class="brief-box">
+                        {html_brief_content}
+                    </div>
+        """
 
-def send_notification_email(gmail_service, subject, body_html, recipient=ADMIN_EMAIL_FOR_NOTIFICATIONS):
-    if not recipient:
-        print("  Admin notification email not set. Skipping notification.")
-        return
+        if image_bytes:
+            email_body_html += """
+                    <div class="creative-box">
+                        <h3 style="margin-top:0; color:#1a73e8; border:none;">AI Generated Campaign Concepts (TEST MODE)</h3>
+                        <p style="font-size: 12px; color: #666;"><i>Conceptual mockups for Gate, Lift, and In-App placements.</i></p>
+                        <img src="cid:brand_creative" alt="Brand Creative Mockup">
+                    </div>
+            """
+
+        email_body_html += """
+                </div>
+                <div class="footer">
+                    <p>Automated by NBH Meeting Prep Agent</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+    else:
+        # ====================================================================
+        # 🟢 NORMAL MODE: OLD BASIC HTML TEMPLATE
+        # ====================================================================
+        email_body_html = f"""
+        <html><body>
+        <p>Hello Team,</p>
+        <p>Please find the pre-meeting brief for your upcoming meeting:</p>
+        <hr>
+        {html_brief_content}
+        <hr>
+        <p>Best regards,<br>NBH Meeting Prep Agent</p>
+        </body></html>
+        """
+
+    # --- BUILD THE MULTIPART EMAIL ---
+    message = MIMEMultipart('related')
+    message['to'] = ", ".join(nbh_recipient_emails)
+    message['from'] = AGENT_EMAIL
+    message['subject'] = email_subject
+
+    msg_alternative = MIMEMultipart('alternative')
+    message.attach(msg_alternative)
+    msg_text = MIMEText(email_body_html, 'html', 'utf-8')
+    msg_alternative.attach(msg_text)
+
+    # Attach Image inline (ONLY if it exists AND we are in test mode)
+    if image_bytes and use_beautiful_html:
+        msg_image = MIMEImage(image_bytes)
+        msg_image.add_header('Content-ID', '<brand_creative>')
+        msg_image.add_header('Content-Disposition', 'inline', filename="creative.jpg")
+        message.attach(msg_image)
+
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
     
-    # Always send a copy to brandvmeet for record-keeping
-    recipients = list(set([recipient, AGENT_EMAIL]))
-
-    email_message = create_email_message(
-        sender=AGENT_EMAIL,
-        to_emails_list=recipients,
-        subject=subject,
-        message_text_html=body_html
-    )
-    send_gmail_message(gmail_service, 'me', email_message)
+    mode_str = "BEAUTIFUL HTML (TEST)" if use_beautiful_html else "BASIC HTML (NORMAL)"
+    print(f"  FINAL CHECK: Sending {mode_str} brief for '{meeting_data['title']}' TO: {nbh_recipient_emails}")
+    send_gmail_message(gmail_service, 'me', {'raw': raw_message})
 
 # Here are some useful functions to update meeting data in the master sheet
 
@@ -2197,24 +2309,28 @@ def main():
         print(f"  Proceeding with brief generation for: {meeting_data['brand_name']}")
         generated_brief = generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, meeting_data, internal_nbh_data_for_brand_str)
 
+        # ====================================================================
+        # 🧪 TEST MODE LOGIC FOR IMAGES & HTML LAYOUT
+        # ====================================================================
+        image_bytes = None
+        is_test_mode = "[TEST_CREATIVE]" in meeting_data['title'].upper()
+
+        if is_test_mode and generated_brief and "Error:" not in generated_brief:
+            print(f"  🧪 TEST MODE DETECTED: Checking if '{meeting_data['brand_name']}' is famous enough for image generation...")
+            is_famous = is_brand_well_known(gemini_llm_client, meeting_data['brand_name'])
+            
+            if is_famous:
+                image_bytes = generate_brand_creative(gemini_llm_client, meeting_data['brand_name'])
+            else:
+                print(f"  ⏭️ Skipping image generation: '{meeting_data['brand_name']}' is not recognized as a major brand by the AI.")
+
         FEEDBACK_FORM_URL = "https://forms.gle/Ho9XLKsuGYhWBrBw7"
+        feedback_footer = f"\n\n---\nGive Your Feedback on The Pre Meeting Briefs. \n👉[Click Here to Fill the Feedback Form]({FEEDBACK_FORM_URL})\n"
 
-        # 2. Define the Footer Text (Using Markdown for the email)
-        # We use the tagline from your form to keep it consistent.
-        feedback_footer = f"""
-\n\n
----
-Give Your Feedback on The Pre Meeting Briefs. 
-👉 Click Here to Fill the Feedback Form ({FEEDBACK_FORM_URL})
-
-"""
-
-        # 3. Append the footer to the generated brief
-        # Only add it if the brief was generated successfully (no errors)
         if generated_brief and "Error:" not in generated_brief:
             generated_brief += feedback_footer
 
-        if "Error:" in generated_brief or not generated_brief.strip(): # Check for errors from LLM
+        if "Error:" in generated_brief or not generated_brief.strip(): 
             print(f"  Failed to generate brief for '{meeting_data['title']}': {generated_brief}")
             error_body_html = f"""
             <html><body><p>The pre-meeting brief agent encountered an error while generating the brief for:</p>
@@ -2222,16 +2338,20 @@ Give Your Feedback on The Pre Meeting Briefs.
             <b>Brand:</b> {meeting_data['brand_name']}<br>
             <b>Scheduled:</b> {meeting_data['start_time_str']}</p>
             <p><b>Error details:</b> {generated_brief}</p></body></html>"""
-            send_notification_email(gmail_service,
-                                    f"Error Generating Brief: {meeting_data['title']}",
-                                    error_body_html)
-            # Don't tag as fully processed if LLM fails, maybe it's temporary.
-            # Or use a different tag like [NBH_BRIEF_AGENT_ERROR_V1]
+            send_notification_email(gmail_service, f"Error Generating Brief: {meeting_data['title']}", error_body_html)
         else:
             print(f"  Successfully generated brief for '{meeting_data['title']}'.")
-            send_brief_email(gmail_service, meeting_data, generated_brief)
-            tag_event_as_processed(calendar_service, event_id) # Tag only on full success
-            set_one_hour_email_reminder(calendar_service, event_id) # Add this call
+            
+            # 🧪 IF IN TEST MODE: Override recipients so ONLY the Admin gets the email
+            if is_test_mode:
+                print(f"  🧪 TEST MODE: Overriding recipients. Sending ONLY to {ADMIN_EMAIL_FOR_NOTIFICATIONS}")
+                meeting_data['nbh_attendees'] =[{'email': ADMIN_EMAIL_FOR_NOTIFICATIONS, 'name': 'Admin Tester'}]
+            
+            # Send the email (Passes `is_test_mode` to trigger the beautiful HTML)
+            send_brief_email(gmail_service, meeting_data, generated_brief, image_bytes=image_bytes, use_beautiful_html=is_test_mode)
+            
+            tag_event_as_processed(calendar_service, event_id) 
+            set_one_hour_email_reminder(calendar_service, event_id) 
             save_processed_event_id(event_id)
             # --- Create Google Doc for the brief ---
             BRIEF_FOLDER_ID = "1RhhsFq5NGC2QtHPj8FQaU5BfhxJR5R6I"
