@@ -909,14 +909,16 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
             continue # Skip to next row if exact match found
             
         # Priority 2: Strict Industry Match OR Keyword in Brand Name
-        if strict_keywords:
+        # FIX: Sanitize keywords to absolutely prevent empty string matching ("" matches everything)
+        valid_keywords =[k.strip().lower() for k in strict_keywords if k and len(k.strip()) > 2]
+        
+        if valid_keywords:
             is_match = False
             # Check 1: Does the Industry Column match?
-            if ind_col != -1 and any(k in row_ind for k in strict_keywords):
+            if ind_col != -1 and any(k in row_ind for k in valid_keywords):
                 is_match = True
             # Check 2 (Fallback): If Industry column is blank, does the Brand Name contain an industry keyword?
-            # (e.g., "Geri Care Hospital" contains "hospital" -> matches Healthcare)
-            elif brand_col != -1 and any(k in row_brand for k in strict_keywords if len(k) > 3):
+            elif brand_col != -1 and any(k in row_brand for k in valid_keywords):
                 is_match = True
                 
             if is_match and len(matches_strict) < 5: 
