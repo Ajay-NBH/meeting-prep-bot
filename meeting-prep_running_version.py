@@ -1477,48 +1477,144 @@ def send_gmail_message(gmail_service, user_id, message_body):
 
 def send_brief_email(gmail_service, meeting_data, brief_content):
     """
-    Sends a pre-meeting brief email to NBH internal attendees for a given meeting.
-    
-    The function filters out excluded emails from the NBH attendee list, converts the brief content from markdown to HTML, formats the email body, and sends the email using the Gmail API. If no eligible recipients are found, the function exits without sending an email.
+    Sends a beautifully formatted pre-meeting brief email to NBH internal attendees.
     """
-    EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in","pia.hood@nobroker.in"} # Define a set of excluded emails
+    EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in","pia.hood@nobroker.in"}
 
-    nbh_recipient_emails = []
-    attendees_list = meeting_data.get('nbh_attendees', []) 
-    if isinstance(attendees_list, list): # Extra safety check
+    nbh_recipient_emails =[]
+    attendees_list = meeting_data.get('nbh_attendees',[]) 
+    if isinstance(attendees_list, list):
         for att in attendees_list:
-            # Ensure 'att' is a dictionary and 'email' key exists
             if isinstance(att, dict) and 'email' in att:
                 attendee_email = att.get('email')
                 if attendee_email and isinstance(attendee_email, str) and attendee_email.lower() not in EXCLUDED_EMAILS:
                     nbh_recipient_emails.append(attendee_email)
     
-    # For testing, override recipients:
-    # nbh_recipient_emails = [ADMIN_EMAIL_FOR_NOTIFICATIONS]
-    # print(f"DEBUG: Intended brief recipients: {nbh_recipient_emails}")
-
     if not nbh_recipient_emails:
         print(f"  No NBH recipients (other than brandvmeet) for '{meeting_data['title']}'. Brief not emailed.")
         return
 
     email_subject = f"Pre-Meeting Brief: {meeting_data['title']} with {meeting_data['brand_name']}"
     
-    # Convert markdown-like brief (from LLM) to basic HTML for email
+    # Convert markdown-like brief (from LLM) to HTML
     html_brief_content = markdown.markdown(brief_content)
-    # html_brief_content = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', html_brief_content) # Basic bold
-    # Add more markdown to HTML conversions if needed (e.g., for lists, headers)  
-    # For headers like # Detail Report, ## Sub-header
-    # html_brief_content = html_brief_content.replace("# ", "<h3>").replace("\n", "</h3><br>") # Simple h3 for main headers
     
+    # Apply modern CSS styling directly to the email body
     email_body_html = f"""
-    <html><body>
-    <p>Hello Team,</p>
-    <p>Please find the pre-meeting brief for your upcoming meeting:</p>
-    <hr>
-    {html_brief_content}
-    <hr>
-    <p>Best regards,<br>NBH Meeting Prep Agent</p>
-    </body></html>
+    <html>
+    <head>
+    <style>
+        body {{
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: #333333;
+            line-height: 1.6;
+            background-color: #f4f7f6;
+            padding: 20px;
+            margin: 0;
+        }}
+        .email-container {{
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 35px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }}
+        .main-title {{
+            color: #0066cc;
+            font-size: 20px;
+            font-weight: bold;
+            text-transform: uppercase;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 12px;
+            margin-bottom: 25px;
+            letter-spacing: 0.5px;
+        }}
+        .greeting {{
+            font-size: 15px;
+            color: #2d3748;
+            margin-bottom: 25px;
+        }}
+        h1, h2 {{
+            color: #1a365d;
+            font-size: 16px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-top: 35px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #edf2f7;
+            padding-bottom: 5px;
+        }}
+        h3 {{
+            color: #2b6cb0;
+            font-size: 15px;
+            font-weight: bold;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }}
+        p {{
+            font-size: 14px;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }}
+        ul, ol {{
+            margin-top: 5px;
+            margin-bottom: 15px;
+            padding-left: 25px;
+        }}
+        li {{
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: #4a5568;
+        }}
+        strong {{
+            color: #1a202c;
+        }}
+        a {{
+            color: #3182ce;
+            text-decoration: none;
+            font-weight: 500;
+        }}
+        a:hover {{
+            text-decoration: underline;
+        }}
+        .footer {{
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 13px;
+            color: #718096;
+        }}
+        .highlight-box {{
+            background-color: #f0f8ff;
+            border: 1px solid #bee3f8;
+            border-radius: 6px;
+            padding: 15px 20px;
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }}
+    </style>
+    </head>
+    <body>
+        <div class="email-container">
+            <div class="main-title">NBH PRE-MEETING BRIEF</div>
+            
+            <div class="greeting">
+                <p>Hi Team,</p>
+                <p>Please find the Pre-Meeting Brief and Intelligence Report for your upcoming meeting with <strong>{meeting_data['brand_name']}</strong>.</p>
+            </div>
+            
+            <div class="markdown-content">
+                {html_brief_content}
+            </div>
+            
+            <div class="footer">
+                <p>Best regards,<br><strong>NBH Meeting Prep Agent</strong></p>
+            </div>
+        </div>
+    </body>
+    </html>
     """
     email_message = create_email_message(
         sender=AGENT_EMAIL,
@@ -1526,7 +1622,7 @@ def send_brief_email(gmail_service, meeting_data, brief_content):
         subject=email_subject,
         message_text_html=email_body_html
     )
-    print(f"  FINAL CHECK: Sending brief for '{meeting_data['title']}' TO: {nbh_recipient_emails} FROM: {AGENT_EMAIL}")
+    print(f"  FINAL CHECK: Sending styled brief for '{meeting_data['title']}' TO: {nbh_recipient_emails} FROM: {AGENT_EMAIL}")
     send_gmail_message(gmail_service, 'me', email_message)
 
 def send_notification_email(gmail_service, subject, body_html, recipient=ADMIN_EMAIL_FOR_NOTIFICATIONS):
@@ -2201,14 +2297,15 @@ def main():
 
         FEEDBACK_FORM_URL = "https://forms.gle/Ho9XLKsuGYhWBrBw7"
 
-        # 2. Define the Footer Text (Using Markdown for the email)
-        # We use the tagline from your form to keep it consistent.
+        # 2. Define the Footer Text (Using HTML injection inside Markdown)
+        # We assign it the "highlight-box" class defined in our email CSS
         feedback_footer = f"""
 \n\n
----
-Give Your Feedback on The Pre Meeting Briefs. 
-👉 Click Here to Fill the Feedback Form ({FEEDBACK_FORM_URL})
-
+<div class="highlight-box">
+    <p style="margin-bottom: 5px; font-size: 15px;"><strong>We want to hear from you!</strong></p>
+    <p style="margin-bottom: 0;">Give your feedback on the Pre-Meeting Briefs.<br>
+    <a href="{FEEDBACK_FORM_URL}">👉 Click Here to Fill the Feedback Form</a></p>
+</div>
 """
 
         # 3. Append the footer to the generated brief
