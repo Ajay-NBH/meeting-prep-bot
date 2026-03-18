@@ -68,6 +68,8 @@ EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP = {
 }
 
 PROCESSED_EVENTS_FILE = 'processed_event_ids.txt' # Simple file-based tracking for local runs
+# --- Feature Toggles ---
+ENABLE_IMAGE_GENERATION = False  # Set to False to completely skip image logic
 
 
 
@@ -2368,16 +2370,19 @@ def main():
         print(f"  Proceeding with brief generation for: {meeting_data['brand_name']}")
         
         # =====================================================================
-        # NEW STEP: GENERATE CREATIVE IMAGE BEFORE WRITING THE BRIEF
+        # IMAGE GENERATION (PAUSED)
         # =====================================================================
         creative_image_bytes = None
-        try:
-            visual_context = get_brand_visual_context(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'])
-            if visual_context:
-                # Pass the gemini_llm_client to the image generator!
-                creative_image_bytes = generate_creative_with_gemini_image(gemini_llm_client, meeting_data['brand_name'], visual_context)
-        except Exception as e:
-            print(f"  Warning: Failed to generate creative image: {e}")
+        if ENABLE_IMAGE_GENERATION:
+            print(f"  🎨 Image Generation is ENABLED. Processing...")
+            try:
+                visual_context = get_brand_visual_context(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'])
+                if visual_context:
+                    creative_image_bytes = generate_creative_with_gemini_image(gemini_llm_client, meeting_data['brand_name'], visual_context)
+            except Exception as e:
+                print(f"  Warning: Failed to generate creative image: {e}")
+        else:
+            print(f"  ℹ️ Image Generation is currently PAUSED. Skipping...")
         # =====================================================================
 
         generated_brief = generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, meeting_data, internal_nbh_data_for_brand_str)
