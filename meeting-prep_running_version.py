@@ -4,7 +4,9 @@ import time
 import base64
 import traceback
 from email.mime.text import MIMEText
-import io # For GDrive downloads
+from email.mime.multipart import MIMEMultipart # NEW: For emails with inline images
+from email.mime.image import MIMEImage         # NEW: For emails with inline images
+import io # For GDrive downloads # For GDrive downloads
 import re
 import markdown 
 import json
@@ -1441,29 +1443,135 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
         if "429" in str(e) or "ResourceExhausted" in str(e): # Quota issue
              return "Error: Gemini API quota likely exceeded. Please check your Google Cloud/AI Studio quotas."
         return f"Error: Exception during Gemini call: {e}"
+# =====================================================================
+# NEW: IMAGE GENERATION WORKFLOW (ART DIRECTOR & ARTIST)
+# =====================================================================
+def get_brand_visual_context(gemini_client, brand_name, industry):
+    """The Art Director: Uses Gemini to safely fetch brand colors and CURRENT LIVE CAMPAIGNS."""
+    if not gemini_client: return None
+    
+    current_month_year = datetime.datetime.now().strftime("%B %Y")
+    
+    prompt = f"""
+    You are an expert Brand Visual Strategist. Research the brand '{brand_name}' (Industry: {industry}) in India.
+    Current Date: {current_month_year}.
+    
+    Task:
+    1. Verify if this is a well-known brand with publicly identifiable brand colors and logos. If obscure, set "is_well_known" to false.
+    2. Identify their primary 2 brand colors.
+    3. SEARCH FOR CURRENT CAMPAIGNS: Use Google Search to find what marketing campaign, slogan, or product launch '{brand_name}' is actively promoting right now in India. 
+    4. If you find a current campaign, use that as the "suggested_theme". 
+    5. If you CANNOT find a specific current campaign, suggest a theme based on an upcoming Indian festival or season relevant to {current_month_year} (e.g., Holi, Summer, IPL).
+    
+    Return ONLY a valid JSON object:
+    {{
+        "is_well_known": true/false,
+        "primary_colors": "e.g., Red and Gold",
+        "suggested_theme": "e.g., 'Festival of Diamonds' current campaign OR 'Vibrant Holi Celebration'"
+    }}
+    """
+    
+    try:
+        grounding_tool = types.Tool(google_search=types.GoogleSearch())
+        config = types.GenerateContentConfig(temperature=0.1, tools=[grounding_tool], response_mime_type="application/json")
+        
+        response = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
+        result_text = response.text.strip()
+        result_text = re.sub(r'```json\s*|\s*```', '', result_text).strip()
+        return json.loads(result_text)
+    except Exception as e:
+        print(f"  Visual context extraction failed for {brand_name}: {e}")
+        return {"is_well_known": False}
 
+def generate_creative_with_gemini_image(gemini_client, brand_name, visual_context):
+    """The Artist: Uses gemini-3-pro-image-preview to generate the 3-in-1 vertical composite."""
+    if not visual_context.get("is_well_known"):
+        print(f"  Skipping image generation for {brand_name}: Brand too obscure (preventing hallucinations).")
+        return None
+        
+    colors = visual_context.get("primary_colors", "vibrant colors")
+    theme = visual_context.get("suggested_theme", "modern lifestyle")
+    
+    image_prompt = f"""
+    Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom.
+    Each section must look like a candid smartphone photo taken inside a standard Indian residential society — NOT ultra-luxury, NOT studio lighting. Use natural, slightly overcast daylight.
+
+    - TOP SECTION — GATE BRANDING
+      - A standard Indian apartment complex entrance. Black wrought-iron sliding gate.
+      - A thin, flat 4ft x 3ft horizontal ACP board displaying a '{brand_name}' ad, mounted on the gate bars. FLAT board, NOT a thick lightbox.
+      - The ad features their primary colors ({colors}) and focuses on the theme: "{theme}".
+      - Trees and apartment buildings visible naturally in the background.
+      - A watchman at the gatehouse casually checking a logbook. A resident walking past in the background, not looking at the ad.
+
+    - MIDDLE SECTION — LIFT BRANDING
+      - Brushed stainless steel elevator interior with vertical metallic grain texture.
+      - An A3 size printed poster in a thin clean white acrylic frame showing the '{brand_name}' ad, mounted on the wall.
+      - The poster uses the colors ({colors}) and the theme: "{theme}".
+      - Elevator buttons and CCTV camera in corner visible.
+      - A resident entering the lift holding a grocery bag, a maintenance worker visible in hallway behind — both going about their day.
+
+    - BOTTOM SECTION — DIGITAL IN-APP (PAC)
+      - A clean, high-fidelity digital UI mockup (screenshot) of the NoBrokerHood mobile app on a smartphone screen.
+      - TOP OF SCREEN: Clean iOS/Android style status bar (time, battery, signal).
+      - APP HEADER: White header with "Back" button icon and title "My Visitors".
+      - THE PAC OVERLAY: A large, crisp white card with rounded corners overlaying the screen.
+          - Includes a green circular icon with a white checkmark.
+          - Bold black text: "Pre approval created".
+          - Small grey text: "for your {brand_name} delivery".
+      - THE AD CREATIVE: Below the notification card, a large, high-resolution square advertisement for '{brand_name}' featuring the theme "{theme}" and colors ({colors}).
+      - BACKGROUND OF UI: The apartment list behind the overlay should be darkened (dimmed) to make the notification card and ad pop.
+      - NO photography elements, NO hands, NO table. Just a clean digital graphic.
+
+    # LAYOUT RULES:
+    - You MUST show all 3 panels vertically (top gate, middle lift, bottom in-app).
+    - Separate sections with a thin white horizontal divider line.
+    - BRAND INTEGRITY: The {brand_name} branding and logo MUST be of professional marketing quality, with perfectly sharp typography and zero distortion.
+    - Each ad creative must look like a high-end, newly printed execution, maintaining the brand’s premium identity in every panel.
+    - No NoBrokerHood logos on any physical surfaces. Only '{brand_name}' branding visible on the ad panels.
+    - Overall feel: Real, natural, candid, authentic Indian community life.
+    """
+    
+    print(f"  🎨 Generating 3-in-1 Gemini Image creative for {brand_name}...")
+    print(f"     Theme selected: {theme} | Colors: {colors}")
+    
+    try:
+        result = gemini_client.models.generate_images(
+            model='gemini-3-pro-image-preview',
+            prompt=image_prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                output_mime_type="image/jpeg",
+                aspect_ratio="9:16" # Vertical ratio for the 3-in-1 stack
+            )
+        )
+        return result.generated_images[0].image.image_bytes
+    except Exception as e:
+        print(f"  Error generating image with Gemini: {e}")
+        return None
 # --- Email Sending ---
-def create_email_message(sender, to_emails_list, subject, message_text_html):
-    # ... (Using MIMEText with 'html' for better formatting) ...
-    message = MIMEText(message_text_html, 'html', 'utf-8') # Send as HTML
-    message['to'] = ", ".join(to_emails_list)
-    message['from'] = sender
-    message['subject'] = subject
-    raw_message = base64.urlsafe_b64encode(message.as_bytes())
+def create_email_message(sender, to_emails_list, subject, message_text_html, image_bytes=None):
+    """Creates a MIME message that supports inline HTML images."""
+    msg_root = MIMEMultipart('related')
+    msg_root['Subject'] = subject
+    msg_root['From'] = sender
+    msg_root['To'] = ", ".join(to_emails_list)
+
+    msg_alternative = MIMEMultipart('alternative')
+    msg_root.attach(msg_alternative)
+    msg_text = MIMEText(message_text_html, 'html', 'utf-8')
+    msg_alternative.attach(msg_text)
+
+    if image_bytes:
+        image = MIMEImage(image_bytes)
+        image.add_header('Content-ID', '<creative_image>')
+        image.add_header('Content-Disposition', 'inline', filename="creative.jpg")
+        msg_root.attach(image)
+
+    raw_message = base64.urlsafe_b64encode(msg_root.as_bytes())
     return {'raw': raw_message.decode()}
 
 def send_gmail_message(gmail_service, user_id, message_body):
-    # ... (same as before) ...
-    """
-    Sends an email message using the Gmail API.
-    
-    Parameters:
-        user_id (str): The user's email address or the special value 'me' to indicate the authenticated user.
-        message_body (dict): The message payload, typically created by create_email_message().
-    
-    Returns:
-        dict or None: The API response containing the sent message details, or None if sending fails.
-    """
+    """Sends an email message using the Gmail API."""
     if not gmail_service:
         print("  Gmail service not available. Cannot send email.")
         return None
@@ -1475,9 +1583,10 @@ def send_gmail_message(gmail_service, user_id, message_body):
         print(f'  An error occurred sending email: {error}')
         return None
 
-def send_brief_email(gmail_service, meeting_data, brief_content):
+def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_bytes=None):
     """
     Sends a beautifully formatted pre-meeting brief email to NBH internal attendees.
+    Includes TEST MODE and AI Creative injection.
     """
     EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in","pia.hood@nobroker.in"}
 
@@ -1490,14 +1599,37 @@ def send_brief_email(gmail_service, meeting_data, brief_content):
                 if attendee_email and isinstance(attendee_email, str) and attendee_email.lower() not in EXCLUDED_EMAILS:
                     nbh_recipient_emails.append(attendee_email)
     
+    # =====================================================================
+    # TEST MODE LOGIC: Change "True" to "False" when ready to go live!
+    # =====================================================================
+    TEST_MODE = True # <-- SET THIS TO False TO GO LIVE
+    
+    if TEST_MODE:
+        print("  ⚠️ TEST MODE IS ON: Overriding recipients. Sending only to Admin.")
+        nbh_recipient_emails =[ADMIN_EMAIL_FOR_NOTIFICATIONS]
+    # =====================================================================
+
     if not nbh_recipient_emails:
         print(f"  No NBH recipients (other than brandvmeet) for '{meeting_data['title']}'. Brief not emailed.")
         return
 
-    email_subject = f"Pre-Meeting Brief: {meeting_data['title']} with {meeting_data['brand_name']}"
+    email_subject = f"[{'TEST' if TEST_MODE else 'Pre-Meeting Brief'}]: {meeting_data['title']} with {meeting_data['brand_name']}"
     
     # Convert markdown-like brief (from LLM) to HTML
     html_brief_content = markdown.markdown(brief_content)
+    
+    # --- INJECT IMAGE HTML ---
+    creative_html = ""
+    if creative_image_bytes:
+        creative_html = """
+        <div style="margin-top: 35px; border-top: 2px solid #edf2f7; padding-top: 20px;">
+            <h3 style="color: #2b6cb0; font-size: 16px; text-transform: uppercase;">🎨 AI-Generated Pitch Creative</h3>
+            <p style="font-size: 14px; color: #4a5568; margin-bottom: 15px;"><i>Suggested 3-in-1 concept based on the brand's current campaigns:</i></p>
+            <center>
+                <img src="cid:creative_image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="Brand Creative">
+            </center>
+        </div>
+        """
     
     # Apply modern CSS styling directly to the email body
     email_body_html = f"""
@@ -1609,6 +1741,8 @@ def send_brief_email(gmail_service, meeting_data, brief_content):
                 {html_brief_content}
             </div>
             
+            {creative_html}
+            
             <div class="footer">
                 <p>Best regards,<br><strong>NBH Meeting Prep Agent</strong></p>
             </div>
@@ -1620,7 +1754,8 @@ def send_brief_email(gmail_service, meeting_data, brief_content):
         sender=AGENT_EMAIL,
         to_emails_list=nbh_recipient_emails,
         subject=email_subject,
-        message_text_html=email_body_html
+        message_text_html=email_body_html,
+        image_bytes=creative_image_bytes
     )
     print(f"  FINAL CHECK: Sending styled brief for '{meeting_data['title']}' TO: {nbh_recipient_emails} FROM: {AGENT_EMAIL}")
     send_gmail_message(gmail_service, 'me', email_message)
@@ -2293,6 +2428,20 @@ def main():
 
 
         print(f"  Proceeding with brief generation for: {meeting_data['brand_name']}")
+        
+        # =====================================================================
+        # NEW STEP: GENERATE CREATIVE IMAGE BEFORE WRITING THE BRIEF
+        # =====================================================================
+        creative_image_bytes = None
+        try:
+            visual_context = get_brand_visual_context(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'])
+            if visual_context:
+                # Pass the gemini_llm_client to the image generator!
+                creative_image_bytes = generate_creative_with_gemini_image(gemini_llm_client, meeting_data['brand_name'], visual_context)
+        except Exception as e:
+            print(f"  Warning: Failed to generate creative image: {e}")
+        # =====================================================================
+
         generated_brief = generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, meeting_data, internal_nbh_data_for_brand_str)
 
         FEEDBACK_FORM_URL = "https://forms.gle/Ho9XLKsuGYhWBrBw7"
@@ -2328,16 +2477,29 @@ def main():
             # Or use a different tag like [NBH_BRIEF_AGENT_ERROR_V1]
         else:
             print(f"  Successfully generated brief for '{meeting_data['title']}'.")
-            send_brief_email(gmail_service, meeting_data, generated_brief)
-            tag_event_as_processed(calendar_service, event_id) # Tag only on full success
-            set_one_hour_email_reminder(calendar_service, event_id) # Add this call
-            save_processed_event_id(event_id)
+            
+            # Pass the creative_image_bytes to the updated send_brief_email function
+            send_brief_email(gmail_service, meeting_data, generated_brief, creative_image_bytes)
+            
+            # =====================================================================
+            # TEST MODE LOGIC: Change "True" to "False" when ready to go live!
+            # =====================================================================
+            TEST_MODE = True # <-- SET THIS TO False TO GO LIVE
+            
+            if not TEST_MODE:
+                tag_event_as_processed(calendar_service, event_id) # Tag only on full success
+                set_one_hour_email_reminder(calendar_service, event_id) # Add this call
+                save_processed_event_id(event_id)
+            else:
+                print("  ⚠️ TEST MODE: Did not tag event as processed in Calendar so it can be tested again.")
+            
             # --- Create Google Doc for the brief ---
             BRIEF_FOLDER_ID = "1RhhsFq5NGC2QtHPj8FQaU5BfhxJR5R6I"
+            doc_title_prefix = "[TEST] Pre-Meeting Brief" if TEST_MODE else "Pre-Meeting Brief"
             doc_id = create_google_doc_in_folder(
                 drive_service,
                 BRIEF_FOLDER_ID,
-                f"Pre-Meeting Brief - {meeting_data['brand_name']} - {meeting_data['title']}"
+                f"{doc_title_prefix} - {meeting_data['brand_name']} - {meeting_data['title']}"
             )
             if doc_id:
                 write_into_doc(docs_service, doc_id=doc_id, text=generated_brief)
@@ -2347,7 +2509,7 @@ def main():
                 try:
                     body = {
                         "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
-                        "data": [
+                        "data":[
                             {"range": f"Meeting_data!H{index_of_event}:H{index_of_event}", "values": update_values},
                             {"range": f"Audit_and_Training!H{index_of_event}:H{index_of_event}", "values": update_values},
                             ],
@@ -2364,7 +2526,7 @@ def main():
                         values = [["TRUE"]]
                         body = {
                             "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
-                            "data": [
+                            "data":[
                                 {"range": f"Meeting_data!{column_index_master['Owner sheet to be updated']}{index_of_event}:{column_index_master['Owner sheet to be updated']}{index_of_event}", "values": values},
                                 {"range": f"Audit_and_Training!{column_index_audit['Owner sheet to be updated']}{index_of_event}:{column_index_audit['Owner sheet to be updated']}{index_of_event}", "values": values},
                                 ],
