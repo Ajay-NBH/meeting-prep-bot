@@ -4,8 +4,7 @@ import time
 import base64
 import traceback
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart # NEW: For emails with inline images
-from email.mime.image import MIMEImage         # NEW: For emails with inline images
+from email.message import EmailMessage # PROVEN LOGIC: Used for embedding images
 import io # For GDrive downloads # For GDrive downloads
 import re
 import markdown 
@@ -1484,7 +1483,7 @@ def get_brand_visual_context(gemini_client, brand_name, industry):
         return {"is_well_known": False}
 
 def generate_creative_with_gemini_image(gemini_client, brand_name, visual_context):
-    """The Artist: Generates the 3-in-1 vertical composite."""
+    """The Artist: Generates the 3-in-1 vertical composite using proven Outbound logic."""
     if not visual_context.get("is_well_known"):
         print(f"  Skipping image generation for {brand_name}: Brand too obscure.")
         return None
@@ -1534,56 +1533,54 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, visual_contex
     print(f"  🎨 Generating 3-in-1 Gemini Image creative for {brand_name}...")
     
     try:
-        # NOTE: Using imagen-3.0-generate-001 as it is the standard stable image model for the API. 
-        # If your specific API key requires 'gemini-3-pro-image-preview', change it back here.
-        result = gemini_client.models.generate_images(
-            model='imagen-3.0-generate-001', 
-            prompt=image_prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                output_mime_type="image/jpeg",
-                aspect_ratio="9:16" 
+        # PROVEN LOGIC: Using generate_content with response_modalities just like your outbound script
+        response = gemini_client.models.generate_content(
+            model="gemini-3-pro-image-preview",
+            contents=image_prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"]
             )
         )
-        print("  ✅ Image generated successfully!")
-        return result.generated_images[0].image.image_bytes
+
+        # Extract image from response parts
+        if response.candidates:
+            for part in response.candidates[0].content.parts:
+                if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                    print(f"  ✅ Image generated successfully for {brand_name}!")
+                    return part.inline_data.data
+
+        print(f"   No image data found in response for {brand_name}.")
+        return None
     except Exception as e:
-        print(f"  ❌ Error generating image with Gemini: {e}")
+        print(f"   Error generating image with Gemini: {e}")
         return None
 # --- Email Sending ---
 def create_email_message_with_image(sender, to_emails_list, subject, message_text_html, image_bytes=None):
-    """Creates a MIME message that supports inline HTML images."""
-    msg_root = MIMEMultipart('related')
-    msg_root['Subject'] = subject
-    msg_root['From'] = sender
-    msg_root['To'] = ", ".join(to_emails_list)
+    """Creates an email message using the proven EmailMessage logic from outbound script."""
+    msg = EmailMessage()
+    msg["To"] = ", ".join(to_emails_list)
+    msg["From"] = sender
+    msg["Subject"] = subject
 
-    msg_alternative = MIMEMultipart('alternative')
-    msg_root.attach(msg_alternative)
-    msg_text = MIMEText(message_text_html, 'html', 'utf-8')
-    msg_alternative.attach(msg_text)
+    # Plain text fallback
+    msg.set_content("Please view this email in an HTML-compatible client to see the full brief and creatives.")
+    
+    # Add the HTML version
+    msg.add_alternative(message_text_html, subtype="html")
 
+    # PROVEN LOGIC: Attach and embed Mockup Image using add_related
     if image_bytes:
-        image = MIMEImage(image_bytes)
-        image.add_header('Content-ID', '<creative_image>')
-        image.add_header('Content-Disposition', 'inline', filename="creative.jpg")
-        msg_root.attach(image)
+        html_part = msg.get_body(preferencelist=("html",))
+        if html_part:
+            html_part.add_related(
+                image_bytes,
+                maintype="image",
+                subtype="jpeg",
+                cid="creative_image"
+            )
 
-    raw_message = base64.urlsafe_b64encode(msg_root.as_bytes())
-    return {'raw': raw_message.decode()}
-
-def send_gmail_message(gmail_service, user_id, message_body):
-    """Sends an email message using the Gmail API."""
-    if not gmail_service:
-        print("  Gmail service not available. Cannot send email.")
-        return None
-    try:
-        message = (gmail_service.users().messages().send(userId=user_id, body=message_body).execute())
-        print(f'  Message Id: {message["id"]} sent.')
-        return message
-    except HttpError as error:
-        print(f'  An error occurred sending email: {error}')
-        return None
+    raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    return {'raw': raw_message}
 
 def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_bytes=None):
     """Sends the brief email, injecting the AI creative if available. Includes TEST MODE."""
