@@ -314,8 +314,7 @@ IMPORTANT RULES:
     grounding_tool = types.Tool(google_search=types.GoogleSearch())
     config = types.GenerateContentConfig(
         temperature=0.1, # Lower temperature for better accuracy
-        tools=[grounding_tool],
-        response_mime_type="application/json"
+        tools=[grounding_tool] # REMOVED JSON MIME TYPE TO PREVENT API CRASH
     )
     
     try:
@@ -1473,7 +1472,8 @@ def get_brand_visual_context(gemini_client, brand_name, industry):
     
     try:
         grounding_tool = types.Tool(google_search=types.GoogleSearch())
-        config = types.GenerateContentConfig(temperature=0.1, tools=[grounding_tool], response_mime_type="application/json")
+        # REMOVED JSON MIME TYPE TO PREVENT API CRASH
+        config = types.GenerateContentConfig(temperature=0.1, tools=[grounding_tool]) 
         
         response = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
         result_text = response.text.strip()
@@ -1622,11 +1622,15 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
     creative_html = ""
     if creative_image_bytes:
         creative_html = """
-        <div style="margin-top: 35px; border-top: 2px solid #edf2f7; padding-top: 20px;">
-            <h3 style="color: #2b6cb0; font-size: 16px; text-transform: uppercase;">🎨 AI-Generated Pitch Creative</h3>
-            <p style="font-size: 14px; color: #4a5568; margin-bottom: 15px;"><i>Suggested 3-in-1 concept based on the brand's current campaigns:</i></p>
+        <div style="margin-bottom: 30px; background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 25px; border-radius: 8px;">
+            <h3 style="color: #2b6cb0; font-size: 18px; text-transform: uppercase; margin-top: 0; border-bottom: 2px solid #bee3f8; padding-bottom: 10px;">
+                💡 Thought-Starters: Creatives Based on Current Market Insights
+            </h3>
+            <p style="font-size: 14px; color: #4a5568; margin-bottom: 20px;">
+                <i>A suggested 3-in-1 visual pitch (Gate, Lift, and App) based on the brand's current live campaigns and colors:</i>
+            </p>
             <center>
-                <img src="cid:creative_image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="Brand Creative">
+                <img src="cid:creative_image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.15);" alt="Brand Creative">
             </center>
         </div>
         """
@@ -1737,11 +1741,11 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
                 <p>Please find the Pre-Meeting Brief and Intelligence Report for your upcoming meeting with <strong>{meeting_data['brand_name']}</strong>.</p>
             </div>
             
+            {creative_html}
+
             <div class="markdown-content">
                 {html_brief_content}
             </div>
-            
-            {creative_html}
             
             <div class="footer">
                 <p>Best regards,<br><strong>NBH Meeting Prep Agent</strong></p>
