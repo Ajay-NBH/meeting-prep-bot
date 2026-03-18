@@ -1472,7 +1472,7 @@ def get_brand_visual_context(gemini_client, brand_name, industry):
     
     try:
         grounding_tool = types.Tool(google_search=types.GoogleSearch())
-        # REMOVED JSON MIME TYPE TO PREVENT API CRASH
+        # FIXED: Removed response_mime_type="application/json" which was causing the 400 Crash!
         config = types.GenerateContentConfig(temperature=0.1, tools=[grounding_tool]) 
         
         response = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
@@ -1484,9 +1484,9 @@ def get_brand_visual_context(gemini_client, brand_name, industry):
         return {"is_well_known": False}
 
 def generate_creative_with_gemini_image(gemini_client, brand_name, visual_context):
-    """The Artist: Uses gemini-3-pro-image-preview to generate the 3-in-1 vertical composite."""
+    """The Artist: Generates the 3-in-1 vertical composite."""
     if not visual_context.get("is_well_known"):
-        print(f"  Skipping image generation for {brand_name}: Brand too obscure (preventing hallucinations).")
+        print(f"  Skipping image generation for {brand_name}: Brand too obscure.")
         return None
         
     colors = visual_context.get("primary_colors", "vibrant colors")
@@ -1532,21 +1532,23 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, visual_contex
     """
     
     print(f"  🎨 Generating 3-in-1 Gemini Image creative for {brand_name}...")
-    print(f"     Theme selected: {theme} | Colors: {colors}")
     
     try:
+        # NOTE: Using imagen-3.0-generate-001 as it is the standard stable image model for the API. 
+        # If your specific API key requires 'gemini-3-pro-image-preview', change it back here.
         result = gemini_client.models.generate_images(
-            model='gemini-3-pro-image-preview',
+            model='imagen-3.0-generate-001', 
             prompt=image_prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=1,
                 output_mime_type="image/jpeg",
-                aspect_ratio="9:16" # Vertical ratio for the 3-in-1 stack
+                aspect_ratio="9:16" 
             )
         )
+        print("  ✅ Image generated successfully!")
         return result.generated_images[0].image.image_bytes
     except Exception as e:
-        print(f"  Error generating image with Gemini: {e}")
+        print(f"  ❌ Error generating image with Gemini: {e}")
         return None
 # --- Email Sending ---
 def create_email_message(sender, to_emails_list, subject, message_text_html, image_bytes=None):
@@ -1584,10 +1586,7 @@ def send_gmail_message(gmail_service, user_id, message_body):
         return None
 
 def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_bytes=None):
-    """
-    Sends a beautifully formatted pre-meeting brief email to NBH internal attendees.
-    Includes TEST MODE and AI Creative injection.
-    """
+    """Sends the brief email, injecting the AI creative if available. Includes TEST MODE."""
     EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in","pia.hood@nobroker.in"}
 
     nbh_recipient_emails =[]
@@ -1602,7 +1601,7 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
     # =====================================================================
     # TEST MODE LOGIC: Change "True" to "False" when ready to go live!
     # =====================================================================
-    TEST_MODE = True # <-- SET THIS TO False TO GO LIVE
+    TEST_MODE = True 
     
     if TEST_MODE:
         print("  ⚠️ TEST MODE IS ON: Overriding recipients. Sending only to Admin.")
@@ -1610,17 +1609,16 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
     # =====================================================================
 
     if not nbh_recipient_emails:
-        print(f"  No NBH recipients (other than brandvmeet) for '{meeting_data['title']}'. Brief not emailed.")
+        print(f"  No NBH recipients for '{meeting_data['title']}'. Brief not emailed.")
         return
 
     email_subject = f"[{'TEST' if TEST_MODE else 'Pre-Meeting Brief'}]: {meeting_data['title']} with {meeting_data['brand_name']}"
-    
-    # Convert markdown-like brief (from LLM) to HTML
     html_brief_content = markdown.markdown(brief_content)
     
     # --- INJECT IMAGE HTML ---
     creative_html = ""
     if creative_image_bytes:
+        print("  📸 Attaching image to email HTML...")
         creative_html = """
         <div style="margin-bottom: 30px; background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 25px; border-radius: 8px;">
             <h3 style="color: #2b6cb0; font-size: 18px; text-transform: uppercase; margin-top: 0; border-bottom: 2px solid #bee3f8; padding-bottom: 10px;">
@@ -1634,102 +1632,22 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
             </center>
         </div>
         """
-    
-    # Apply modern CSS styling directly to the email body
+
     email_body_html = f"""
     <html>
     <head>
     <style>
-        body {{
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            color: #333333;
-            line-height: 1.6;
-            background-color: #f4f7f6;
-            padding: 20px;
-            margin: 0;
-        }}
-        .email-container {{
-            max-width: 800px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            padding: 35px;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        }}
-        .main-title {{
-            color: #0066cc;
-            font-size: 20px;
-            font-weight: bold;
-            text-transform: uppercase;
-            border-bottom: 2px solid #0066cc;
-            padding-bottom: 12px;
-            margin-bottom: 25px;
-            letter-spacing: 0.5px;
-        }}
-        .greeting {{
-            font-size: 15px;
-            color: #2d3748;
-            margin-bottom: 25px;
-        }}
-        h1, h2 {{
-            color: #1a365d;
-            font-size: 16px;
-            font-weight: bold;
-            text-transform: uppercase;
-            margin-top: 35px;
-            margin-bottom: 15px;
-            border-bottom: 1px solid #edf2f7;
-            padding-bottom: 5px;
-        }}
-        h3 {{
-            color: #2b6cb0;
-            font-size: 15px;
-            font-weight: bold;
-            margin-top: 20px;
-            margin-bottom: 10px;
-        }}
-        p {{
-            font-size: 14px;
-            margin-top: 0;
-            margin-bottom: 15px;
-        }}
-        ul, ol {{
-            margin-top: 5px;
-            margin-bottom: 15px;
-            padding-left: 25px;
-        }}
-        li {{
-            font-size: 14px;
-            margin-bottom: 8px;
-            color: #4a5568;
-        }}
-        strong {{
-            color: #1a202c;
-        }}
-        a {{
-            color: #3182ce;
-            text-decoration: none;
-            font-weight: 500;
-        }}
-        a:hover {{
-            text-decoration: underline;
-        }}
-        .footer {{
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #e2e8f0;
-            font-size: 13px;
-            color: #718096;
-        }}
-        .highlight-box {{
-            background-color: #f0f8ff;
-            border: 1px solid #bee3f8;
-            border-radius: 6px;
-            padding: 15px 20px;
-            margin-top: 30px;
-            margin-bottom: 20px;
-        }}
+        body {{ font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #333333; line-height: 1.6; background-color: #f4f7f6; padding: 20px; margin: 0; }}
+        .email-container {{ max-width: 800px; margin: 0 auto; background-color: #ffffff; padding: 35px; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }}
+        .main-title {{ color: #0066cc; font-size: 20px; font-weight: bold; text-transform: uppercase; border-bottom: 2px solid #0066cc; padding-bottom: 12px; margin-bottom: 25px; letter-spacing: 0.5px; }}
+        .greeting {{ font-size: 15px; color: #2d3748; margin-bottom: 25px; }}
+        h1, h2 {{ color: #1a365d; font-size: 16px; font-weight: bold; text-transform: uppercase; margin-top: 35px; margin-bottom: 15px; border-bottom: 1px solid #edf2f7; padding-bottom: 5px; }}
+        h3 {{ color: #2b6cb0; font-size: 15px; font-weight: bold; margin-top: 20px; margin-bottom: 10px; }}
+        p {{ font-size: 14px; margin-top: 0; margin-bottom: 15px; }}
+        ul, ol {{ margin-top: 5px; margin-bottom: 15px; padding-left: 25px; }}
+        li {{ font-size: 14px; margin-bottom: 8px; color: #4a5568; }}
+        .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #718096; }}
+        .highlight-box {{ background-color: #f0f8ff; border: 1px solid #bee3f8; border-radius: 6px; padding: 15px 20px; margin-top: 30px; margin-bottom: 20px; }}
     </style>
     </head>
     <body>
@@ -1741,8 +1659,10 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
                 <p>Please find the Pre-Meeting Brief and Intelligence Report for your upcoming meeting with <strong>{meeting_data['brand_name']}</strong>.</p>
             </div>
             
+            <!-- IMAGE INJECTED HERE FIRST -->
             {creative_html}
-
+            
+            <!-- TEXT BRIEF INJECTED HERE SECOND -->
             <div class="markdown-content">
                 {html_brief_content}
             </div>
@@ -1754,16 +1674,16 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
     </body>
     </html>
     """
-    email_message = create_email_message(
+    
+    email_message = create_email_message_with_image(
         sender=AGENT_EMAIL,
         to_emails_list=nbh_recipient_emails,
         subject=email_subject,
         message_text_html=email_body_html,
         image_bytes=creative_image_bytes
     )
-    print(f"  FINAL CHECK: Sending styled brief for '{meeting_data['title']}' TO: {nbh_recipient_emails} FROM: {AGENT_EMAIL}")
+    print(f"  FINAL CHECK: Sending styled brief for '{meeting_data['title']}' TO: {nbh_recipient_emails}")
     send_gmail_message(gmail_service, 'me', email_message)
-
 def send_notification_email(gmail_service, subject, body_html, recipient=ADMIN_EMAIL_FOR_NOTIFICATIONS):
     if not recipient:
         print("  Admin notification email not set. Skipping notification.")
