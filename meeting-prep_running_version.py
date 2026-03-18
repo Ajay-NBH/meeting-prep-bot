@@ -1582,6 +1582,19 @@ def create_email_message_with_image(sender, to_emails_list, subject, message_tex
     raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     return {'raw': raw_message}
 
+def send_gmail_message(gmail_service, user_id, message_body):
+    """Sends an email message using the Gmail API."""
+    if not gmail_service:
+        print("  Gmail service not available. Cannot send email.")
+        return None
+    try:
+        message = (gmail_service.users().messages().send(userId=user_id, body=message_body).execute())
+        print(f'  Message Id: {message["id"]} sent.')
+        return message
+    except HttpError as error:
+        print(f'  An error occurred sending email: {error}')
+        return None
+
 def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_bytes=None):
     """Sends the brief email, injecting the AI creative if available. Includes TEST MODE."""
     EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in","pia.hood@nobroker.in"}
@@ -1681,7 +1694,9 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
     )
     print(f"  FINAL CHECK: Sending styled brief for '{meeting_data['title']}' TO: {nbh_recipient_emails}")
     send_gmail_message(gmail_service, 'me', email_message)
+
 def send_notification_email(gmail_service, subject, body_html, recipient=ADMIN_EMAIL_FOR_NOTIFICATIONS):
+    """Sends error/alert notifications using the new email builder."""
     if not recipient:
         print("  Admin notification email not set. Skipping notification.")
         return
@@ -1689,11 +1704,12 @@ def send_notification_email(gmail_service, subject, body_html, recipient=ADMIN_E
     # Always send a copy to brandvmeet for record-keeping
     recipients = list(set([recipient, AGENT_EMAIL]))
 
-    email_message = create_email_message(
+    email_message = create_email_message_with_image(
         sender=AGENT_EMAIL,
         to_emails_list=recipients,
         subject=subject,
-        message_text_html=body_html
+        message_text_html=body_html,
+        image_bytes=None # No image for simple notifications
     )
     send_gmail_message(gmail_service, 'me', email_message)
 
