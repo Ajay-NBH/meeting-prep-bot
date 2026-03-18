@@ -1551,7 +1551,7 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, visual_contex
         print(f"  ❌ Error generating image with Gemini: {e}")
         return None
 # --- Email Sending ---
-def create_email_message(sender, to_emails_list, subject, message_text_html, image_bytes=None):
+def create_email_message_with_image(sender, to_emails_list, subject, message_text_html, image_bytes=None):
     """Creates a MIME message that supports inline HTML images."""
     msg_root = MIMEMultipart('related')
     msg_root['Subject'] = subject
