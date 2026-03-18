@@ -1174,17 +1174,21 @@ def tag_event_as_processed(calendar_service, event_id, calendar_id='primary'):
         print("  Calendar service not available to tag event.")
         return
     try:
-        event = calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        # ADDED num_retries=3 to auto-reconnect if connection dropped
+        event = calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
         description = event.get('description', '')
         if not is_event_already_tagged(description):
             new_description = f"{description}\n\n{EVENT_TAG_PROCESSED}"
             updated_event_body = {'description': new_description}
             calendar_service.events().patch(
                 calendarId=calendar_id, eventId=event_id, body=updated_event_body
-            ).execute()
+            ).execute(num_retries=3)
             print(f"  Tagged event {event_id} as processed in calendar.")
     except HttpError as error:
-        print(f"  An error occurred tagging event {event_id}: {error}")
+        print(f"  An HTTP error occurred tagging event {event_id}: {error}")
+    except Exception as e:
+        # SAFETY NET: Prevents crash if connection drops
+        print(f"  ⚠️ Network error tagging event {event_id} (Ignored to prevent crash): {e}")
 
 EVENT_REMINDER_SET_TAG = "[NBH_1HR_REMINDER_SET]"
 
@@ -1193,18 +1197,17 @@ def set_one_hour_email_reminder(calendar_service, event_id, calendar_id='primary
         print("  Calendar service not available to set reminder.")
         return False
     try:
-        event = calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        # ADDED num_retries=3 to auto-reconnect
+        event = calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
         
-        # Check if our specific reminder tag is already there
         description = event.get('description', '')
         if EVENT_REMINDER_SET_TAG in description:
             print(f"  1-hour email reminder already marked as set for event {event_id}.")
             return True
 
         reminders = event.get('reminders', {})
-        overrides = reminders.get('overrides', [])
+        overrides = reminders.get('overrides',[])
         
-        # Check if a 60-minute email reminder already exists
         has_one_hour_email_reminder = any(
             r.get('method') == 'email' and r.get('minutes') == 60 for r in overrides
         )
@@ -1217,23 +1220,44 @@ def set_one_hour_email_reminder(calendar_service, event_id, calendar_id='primary
             body_update = {'reminders': {'useDefault': False, 'overrides': overrides}}
             calendar_service.events().patch(
                 calendarId=calendar_id, eventId=event_id, body=body_update
-            ).execute()
+            ).execute(num_retries=3)
             print(f"  Successfully added 60-minute email reminder for event {event_id}.")
 
-        # Add our custom tag to the description to indicate we've processed this for reminders
         if EVENT_REMINDER_SET_TAG not in description:
             new_description = f"{description}\n{EVENT_REMINDER_SET_TAG}".strip()
             body_update_desc = {'description': new_description}
             calendar_service.events().patch(
                 calendarId=calendar_id, eventId=event_id, body=body_update_desc
-            ).execute()
+            ).execute(num_retries=3)
             print(f"  Tagged event {event_id} with {EVENT_REMINDER_SET_TAG}.")
         
         return True
 
     except HttpError as error:
-        print(f"  An error occurred setting reminder for event {event_id}: {error}")
+        print(f"  An HTTP error occurred setting reminder for event {event_id}: {error}")
         return False
+    except Exception as e:
+        # SAFETY NET: Prevents crash if connection drops
+        print(f"  ⚠️ Network error setting reminder for event {event_id} (Ignored to prevent crash): {e}")
+        return False
+
+def send_gmail_message(gmail_service, user_id, message_body):
+    """Sends an email message using the Gmail API."""
+    if not gmail_service:
+        print("  Gmail service not available. Cannot send email.")
+        return None
+    try:
+        # ADDED num_retries=3 to auto-reconnect
+        message = (gmail_service.users().messages().send(userId=user_id, body=message_body).execute(num_retries=3))
+        print(f'  Message Id: {message["id"]} sent.')
+        return message
+    except HttpError as error:
+        print(f'  An HTTP error occurred sending email: {error}')
+        return None
+    except Exception as e:
+        # SAFETY NET
+        print(f'  ⚠️ Network error sending email (Ignored to prevent crash): {e}')
+        return None
 
 
 
@@ -1614,7 +1638,7 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
     # =====================================================================
     # TEST MODE LOGIC: Change "True" to "False" when ready to go live!
     # =====================================================================
-    TEST_MODE = True 
+    TEST_MODE = False # <-- TURNED OFF! Emails will now go to actual attendees.
     
     if TEST_MODE:
         print("  ⚠️ TEST MODE IS ON: Overriding recipients. Sending only to Admin.")
@@ -2421,28 +2445,20 @@ def main():
         else:
             print(f"  Successfully generated brief for '{meeting_data['title']}'.")
             
-            # Pass the creative_image_bytes to the updated send_brief_email function
+            # Send the live email to the actual attendees!
             send_brief_email(gmail_service, meeting_data, generated_brief, creative_image_bytes)
             
-            # =====================================================================
-            # TEST MODE LOGIC: Change "True" to "False" when ready to go live!
-            # =====================================================================
-            TEST_MODE = True # <-- SET THIS TO False TO GO LIVE
-            
-            if not TEST_MODE:
-                tag_event_as_processed(calendar_service, event_id) # Tag only on full success
-                set_one_hour_email_reminder(calendar_service, event_id) # Add this call
-                save_processed_event_id(event_id)
-            else:
-                print("  ⚠️ TEST MODE: Did not tag event as processed in Calendar so it can be tested again.")
+            # ALWAYS tag the event as processed so the bot moves forward
+            tag_event_as_processed(calendar_service, event_id) 
+            set_one_hour_email_reminder(calendar_service, event_id) 
+            save_processed_event_id(event_id)
             
             # --- Create Google Doc for the brief ---
             BRIEF_FOLDER_ID = "1RhhsFq5NGC2QtHPj8FQaU5BfhxJR5R6I"
-            doc_title_prefix = "[TEST] Pre-Meeting Brief" if TEST_MODE else "Pre-Meeting Brief"
             doc_id = create_google_doc_in_folder(
                 drive_service,
                 BRIEF_FOLDER_ID,
-                f"{doc_title_prefix} - {meeting_data['brand_name']} - {meeting_data['title']}"
+                f"Pre-Meeting Brief - {meeting_data['brand_name']} - {meeting_data['title']}"
             )
             if doc_id:
                 write_into_doc(docs_service, doc_id=doc_id, text=generated_brief)
