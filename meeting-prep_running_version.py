@@ -1448,24 +1448,25 @@ def get_brand_visual_context(gemini_client, brand_name, industry):
     """The Art Director: Uses Gemini to safely fetch brand colors and CURRENT LIVE CAMPAIGNS."""
     if not gemini_client: return None
     
-    current_month_year = datetime.datetime.now().strftime("%B %Y")
+    # Get the EXACT current date so the AI knows what has already passed
+    exact_current_date = datetime.datetime.now().strftime("%B %d, %Y")
     
     prompt = f"""
     You are an expert Brand Visual Strategist. Research the brand '{brand_name}' (Industry: {industry}) in India.
-    Current Date: {current_month_year}.
+    Today's Exact Date: {exact_current_date}.
     
     Task:
     1. Verify if this is a well-known brand with publicly identifiable brand colors and logos. If obscure, set "is_well_known" to false.
     2. Identify their primary 2 brand colors.
-    3. SEARCH FOR CURRENT CAMPAIGNS: Use Google Search to find what marketing campaign, slogan, or product launch '{brand_name}' is actively promoting right now in India. 
-    4. If you find a current campaign, use that as the "suggested_theme". 
-    5. If you CANNOT find a specific current campaign, suggest a theme based on an upcoming Indian festival or season relevant to {current_month_year} (e.g., Holi, Summer, IPL).
+    3. SEARCH FOR CURRENT CAMPAIGNS: Use Google Search to find what marketing campaign, slogan, or product launch '{brand_name}' is actively promoting RIGHT NOW in India. 
+    4. If you find a current campaign, use that as the "suggested_theme" (e.g., "Launch of new XYZ product", "Current 'Summer Ready' campaign"). 
+    5. If you CANNOT find a specific current campaign, suggest a theme based on an UPCOMING Indian festival or season relative to today's date ({exact_current_date}). DO NOT suggest past festivals (e.g., if Holi has passed, do not suggest it. Suggest Summer, IPL, Back-to-School, etc.).
     
     Return ONLY a valid JSON object:
     {{
         "is_well_known": true/false,
         "primary_colors": "e.g., Red and Gold",
-        "suggested_theme": "e.g., 'Festival of Diamonds' current campaign OR 'Vibrant Holi Celebration'"
+        "suggested_theme": "e.g., 'Festival of Diamonds' current campaign OR 'Vibrant Summer Collection'"
     }}
     """
     
@@ -2296,7 +2297,7 @@ def main():
             
             # --- CORRECT EMAIL SENDING LOGIC ---
             if gmail_service and leadership_emails:
-                email_message = create_email_message(
+                email_message = create_email_message_with_image(
                     sender=AGENT_EMAIL,
                     to_emails_list=leadership_emails,
                     subject=alert_subject,
@@ -2335,7 +2336,7 @@ def main():
             
             # --- CORRECT EMAIL SENDING LOGIC ---
             if gmail_service and leadership_emails:
-                email_message = create_email_message(
+                email_message = create_email_message_with_image(
                     sender=AGENT_EMAIL,
                     to_emails_list=leadership_emails,
                     subject=alert_subject,
