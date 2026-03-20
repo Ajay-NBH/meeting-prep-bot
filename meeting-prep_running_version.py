@@ -209,7 +209,52 @@ def find_common_attendees(attendee_set_1_raw, attendee_set_2_raw):
     return common_attendees_raw_names
 
 # --- END OF NEW HELPER FUNCTIONS ---
+# ========== NEW FUNCTION: Smart & Strict Brand Matching (For Escalations) ==========
+def is_brand_match(brand1, brand2):
+    """
+    Strict but smart brand matching for Escalation Emails.
+    Matches 'Amazon' == 'Amazon India', 'Swiggy' == 'Swiggy Instamart'.
+    Prevents 'Times' == 'Times OOH', 'ia' == 'Epigamia', or 'zee' == 'sbzee'.
+    """
+    if not brand1 or not brand2:
+        return False
+        
+    b1 = str(brand1).lower().strip()
+    b2 = str(brand2).lower().strip()
+    
+    if not b1 or not b2 or b1 == 'unknown' or b2 == 'unknown':
+        return False
+        
+    # 1. Exact direct match (Fastest check)
+    if b1 == b2:
+        return True
+        
+    def clean_brand(b):
+        # Replace special characters with space
+        b = re.sub(r'[^a-z0-9]', ' ', b)
+        
+        # Fluff words that don't change the core brand identity
+        words_to_ignore = {
+            'india', 'pvt', 'ltd', 'private', 'limited', 'inc', 'corp', 
+            'corporation', 'llc', 'the', 'group', 'co', 'company', 'brand', 'brands',
+            'instamart', 'pay', 'fresh', 'digital', 'global', 'ventures', 'enterprise'
+        }
+        
+        # Split into words, filter out ignored words
+        words = b.split()
+        cleaned =[w for w in words if w not in words_to_ignore]
+        
+        return ' '.join(cleaned).strip()
 
+    clean_b1 = clean_brand(b1)
+    clean_b2 = clean_brand(b2)
+    
+    # 2. Strict Exact Match on the cleaned core brand name
+    if clean_b1 and clean_b2 and clean_b1 == clean_b2:
+        return True
+        
+    return False
+# ===================================================================================
 # ========== NEW FUNCTION 1: Search for LinkedIn Profile ==========
 def search_linkedin_profile(person_name, company_name, gemini_llm_client):
     """
@@ -1001,8 +1046,8 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
                 if not sheet_brand or sheet_brand == 'unknown' or not target_clean or target_clean == 'unknown':
                     continue
                 
-                # STRICTER MATCHING LOGIC
-                if target_clean in sheet_brand or sheet_brand in target_clean:
+                # --- NEW EXACT BRAND MATCHING LOGIC (For Escalation Alerts Only) ---
+                if is_brand_match(target_clean, sheet_brand):
                     row_date_str = str(row[col_date]) if len(row) > col_date else ""
                     prev_nbh_raw = str(row[col_nbh_attendees]).lower() if len(row) > col_nbh_attendees else ""
                     is_attendee_match = any(token in prev_nbh_raw for token in current_nbh_tokens)
