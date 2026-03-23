@@ -915,32 +915,32 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
     matches_strict =[]
     
     if not isinstance(file_data_obj, list) or not file_data_obj: 
-        return []
+        return[]
     
     # Detect Columns
-    header_vals = file_data_obj[0].get("header", []) if isinstance(file_data_obj[0], dict) else[]
+    header_vals = file_data_obj[0].get("header",[]) if isinstance(file_data_obj[0], dict) else[]
     brand_col, ind_col, date_col = -1, -1, -1
 
     if header_vals:
-        lower_h = [str(h).strip().lower() for h in header_vals]
+        lower_h =[str(h).strip().lower() for h in header_vals]
         for idx, h in enumerate(lower_h):
             if "brand" in h: brand_col = idx
             if any(x in h for x in ["industry", "category", "vertical"]): ind_col = idx
             if any(x in h for x in ["year", "date", "timestamp"]): date_col = idx
 
-    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else []
+    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else[]
     if not data_rows: return[]
 
     # Iterate Newest First (Bottom -> Top)
     for row_info in reversed(data_rows):
-        vals = row_info.get('values', [])
+        vals = row_info.get('values',[])
         if not vals: continue
         
         row_items =[]
         for i in range(len(header_vals)):
             if i < len(vals):
                 val = str(vals[i]).strip()
-                if val and val.lower() not in['nan', 'none', '', 'n/a']:
+                if val and val.lower() not in ['nan', 'none', '', 'n/a']:
                     row_items.append(f"{header_vals[i]}: {val}")
         entry = " | ".join(row_items)
         if len(entry) < 15: continue
@@ -949,14 +949,12 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
         
         # Priority 1: Exact Brand Match
-        # FIX: Added 'row_brand and len(row_brand) > 2' to prevent empty cells from matching everything
         if brand_clean and len(brand_clean) > 2 and row_brand and len(row_brand) > 2:
             if (brand_clean in row_brand) or (row_brand in brand_clean):
                 matches_brand.append(entry)
-                continue # Skip to next row if exact match found
+                continue 
             
         # Priority 2: Strict Industry Match OR Keyword in Brand Name
-        # FIX: Sanitize keywords to prevent empty string matching
         valid_keywords =[k.strip().lower() for k in strict_keywords if k and len(k.strip()) > 2]
         
         if valid_keywords:
@@ -968,17 +966,19 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
             elif brand_col != -1 and row_brand and any(k in row_brand for k in valid_keywords):
                 is_match = True
                 
-            if is_match and len(matches_strict) < 5: 
+            # FIX: Increased limit to 50! This ensures we grab a massive pool of the LATEST 
+            # industry data from the bottom of the sheet, giving the AI enough data to find 
+            # the exact sub-category (e.g., Home Care vs Food).
+            if is_match and len(matches_strict) < 50: 
                 matches_strict.append(entry)
 
     # Return Logic
     if matches_brand:
         return ["**Exact Brand Matches Found:**"] + matches_brand[:5]
     elif matches_strict:
-        return ["**Relevant Industry Campaigns Found:**"] + matches_strict[:5]
+        return ["**Relevant Industry Campaigns Found:**"] + matches_strict[:50]
     
     return[]
-
 
 # ==============================================================================
 # MAIN FUNCTION: Powered by Strict Exact Mapping
