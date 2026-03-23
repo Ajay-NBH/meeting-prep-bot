@@ -940,7 +940,7 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         for i in range(len(header_vals)):
             if i < len(vals):
                 val = str(vals[i]).strip()
-                if val and val.lower() not in ['nan', 'none', '', 'n/a']:
+                if val and val.lower() not in['nan', 'none', '', 'n/a']:
                     row_items.append(f"{header_vals[i]}: {val}")
         entry = " | ".join(row_items)
         if len(entry) < 15: continue
@@ -966,9 +966,7 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
             elif brand_col != -1 and row_brand and any(k in row_brand for k in valid_keywords):
                 is_match = True
                 
-            # FIX: Increased limit to 50! This ensures we grab a massive pool of the LATEST 
-            # industry data from the bottom of the sheet, giving the AI enough data to find 
-            # the exact sub-category (e.g., Home Care vs Food).
+            # Limit increased to 50 to ensure the AI has a wide pool to filter the best 4 from.
             if is_match and len(matches_strict) < 50: 
                 matches_strict.append(entry)
 
