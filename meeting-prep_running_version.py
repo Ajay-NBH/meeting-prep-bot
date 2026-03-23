@@ -936,17 +936,22 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         vals = row_info.get('values',[])
         if not vals: continue
         
+        # Extract Brand and Industry first
+        row_brand = str(vals[brand_col]).strip().lower() if brand_col != -1 and len(vals) > brand_col else ""
+        row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
+        
+        # 🛑 NEW SAFEGUARD: If the row has no brand name, it's garbage data. Skip it entirely!
+        if not row_brand or row_brand in ['nan', 'none', '', 'n/a', 'unknown']:
+            continue
+
         row_items =[]
         for i in range(len(header_vals)):
             if i < len(vals):
                 val = str(vals[i]).strip()
-                if val and val.lower() not in['nan', 'none', '', 'n/a']:
+                if val and val.lower() not in ['nan', 'none', '', 'n/a']:
                     row_items.append(f"{header_vals[i]}: {val}")
         entry = " | ".join(row_items)
         if len(entry) < 15: continue
-
-        row_brand = str(vals[brand_col]).strip().lower() if brand_col != -1 and len(vals) > brand_col else ""
-        row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
         
         # Priority 1: Exact Brand Match
         if brand_clean and len(brand_clean) > 2 and row_brand and len(row_brand) > 2:
@@ -959,14 +964,11 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         
         if valid_keywords:
             is_match = False
-            # Check 1: Does the Industry Column match?
             if ind_col != -1 and row_ind and any(k in row_ind for k in valid_keywords):
                 is_match = True
-            # Check 2 (Fallback): If Industry column is blank, does the Brand Name contain an industry keyword?
             elif brand_col != -1 and row_brand and any(k in row_brand for k in valid_keywords):
                 is_match = True
                 
-            # Limit increased to 50 to ensure the AI has a wide pool to filter the best 4 from.
             if is_match and len(matches_strict) < 50: 
                 matches_strict.append(entry)
 
