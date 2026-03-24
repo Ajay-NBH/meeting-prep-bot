@@ -433,6 +433,7 @@ class Industry(enum.Enum):
 class Brand_Details(BaseModel):
     brand_name: str
     industry:   Industry
+    sub_category_keywords: list[str] # NEW: Added to hold direct competitors/categories
     
     class Config:
         use_enum_values = True  # Use enum values instead of names in JSON output
@@ -441,13 +442,14 @@ Allowed_Industries = [industry.value for industry in Industry]
 
 BRAND_EXTRACTION_PROMPT_TEMPLATE = """
 You are an expert administrative assistant working for NoBrokerHood (NBH) responsible for parsing meeting titles of meetings between NBH and different companies to extract key business information about those companies.
-Your task is to analyze the provided meeting title and return a JSON object with two specific keys: "brand_name" and "industry".
+Your task is to analyze the provided meeting title and return a JSON object with three specific keys: "brand_name", "industry", and "sub_category_keywords".
 
 Follow these rules precisely:
 1.  **brand_name**: Identify the primary brand or company being met. If a title follows the pattern 'Parent Company (Brand)', the 'Brand' inside the parentheses is the primary `brand_name`. The parent company should be ignored for this task.
 2.  **industry**: Infer the most likely industry for the primary `brand_name` strictly from **Allowed_Industries** mentioned below.
-3.  If the title is ambiguous or you cannot identify a clear brand, return "Unknown" for both fields.
-4.  Your response MUST be ONLY the JSON object, with no other text or markdown fences.
+3.  **sub_category_keywords**: Provide a list of 4 to 6 highly specific product category keywords AND direct competitor brand names in India. This is CRITICAL for finding like-to-like case studies.
+4.  If the title is ambiguous or you cannot identify a clear brand, return "Unknown" for all fields.
+5.  Your response MUST be ONLY the JSON object, with no other text or markdown fences.
 
 Allowed_Industries: {Allowed_Industries}
 ---
@@ -456,31 +458,29 @@ Here are some examples:
 Title: "TCPL (Tetley) X NoBrokerHood/Partnership, 11am"
 {{
   "brand_name": "Tetley",
-  "industry": "Beverages"
+  "industry": "Food & Beverage",
+  "sub_category_keywords":["tea", "green tea", "beverage", "lipton", "taj mahal", "wagh bakri"]
+}}
+
+Title: "Campaign Discussion | Harpic x NBH, 5pm"
+{{
+  "brand_name": "Harpic",
+  "industry": "FMCG",
+  "sub_category_keywords":["toilet cleaner", "home care", "surface cleaner", "lizol", "domex", "mr muscle"]
 }}
 
 Title: "NBH X GIVA Digital _ June Discussion, 12pm"
 {{
   "brand_name": "Giva",
-  "industry": "Jewellery"
-}}
-
-Title: "Physical meeting - Posterscope X NBH, 3:15pm"
-{{
-  "brand_name": "Posterscope",
-  "industry": "Media Agency"
-}}
-
-Title: "Campaign Discussion | Aashirvaad Svasti x NBH, 5pm"
-{{
-  "brand_name": "Aashirvaad Svasti",
-  "industry": "Dairy"
+  "industry": "Jewellery",
+  "sub_category_keywords":["silver jewellery", "accessories", "caratlane", "bluestone", "mia by tanishq"]
 }}
 
 Title: "Internal Team Sync"
 {{
   "brand_name": "Unknown",
-  "industry": "Unknown"
+  "industry": "Unknown",
+  "sub_category_keywords":[]
 }}
 ---
 
@@ -905,17 +905,22 @@ def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, 
 # ==============================================================================
 # STRICT EXACT MATCH HELPER: ONLY Exact Brand OR Exact Industry (No broad fallbacks)
 # ==============================================================================
-def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean, strict_keywords):
+def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean, strict_keywords, sub_category_keywords=None):
     """
     Scans sheet from BOTTOM (Newest) to TOP (Oldest).
     Priority 1: Exact Brand Match
-    Priority 2: Strict Industry Match OR Industry Keyword in Brand Name
+    Priority 2: Sub-Category / Direct Competitor Match (Like-to-Like)
+    Priority 3: Broad Industry Match (Safe Fallback)
     """
+    if sub_category_keywords is None:
+        sub_category_keywords = []
+
     matches_brand = []
+    matches_sub_category = []
     matches_strict =[]
     
     if not isinstance(file_data_obj, list) or not file_data_obj: 
-        return[]
+        return []
     
     # Detect Columns
     header_vals = file_data_obj[0].get("header",[]) if isinstance(file_data_obj[0], dict) else[]
@@ -940,8 +945,8 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         row_brand = str(vals[brand_col]).strip().lower() if brand_col != -1 and len(vals) > brand_col else ""
         row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
         
-        # 🛑 NEW SAFEGUARD: If the row has no brand name, it's garbage data. Skip it entirely!
-        if not row_brand or row_brand in ['nan', 'none', '', 'n/a', 'unknown']:
+        # 🛑 SAFEGUARD: If the row has no brand name, it's garbage data. Skip it entirely!
+        if not row_brand or row_brand in['nan', 'none', '', 'n/a', 'unknown']:
             continue
 
         row_items =[]
@@ -958,8 +963,21 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
             if (brand_clean in row_brand) or (row_brand in brand_clean):
                 matches_brand.append(entry)
                 continue 
+        
+        # Priority 2: Sub-Category / Competitor Match (Like-to-Like)
+        is_sub_match = False
+        if sub_category_keywords:
+            valid_sub_kws =[k.strip().lower() for k in sub_category_keywords if k and len(k.strip()) > 2]
+            if valid_sub_kws:
+                if (ind_col != -1 and row_ind and any(k in row_ind for k in valid_sub_kws)) or \
+                   (brand_col != -1 and row_brand and any(k in row_brand for k in valid_sub_kws)):
+                    is_sub_match = True
+                    
+        if is_sub_match and len(matches_sub_category) < 20: 
+            matches_sub_category.append(entry)
+            continue # If it's a highly relevant match, skip the broad check to prevent duplicates
             
-        # Priority 2: Strict Industry Match OR Keyword in Brand Name
+        # Priority 3: Strict Industry Match (Original Fallback)
         valid_keywords =[k.strip().lower() for k in strict_keywords if k and len(k.strip()) > 2]
         
         if valid_keywords:
@@ -972,11 +990,18 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
             if is_match and len(matches_strict) < 50: 
                 matches_strict.append(entry)
 
-    # Return Logic
+    # Return Logic (Safely combines the tiers)
     if matches_brand:
-        return ["**Exact Brand Matches Found:**"] + matches_brand[:5]
+        return["**Exact Brand Matches Found:**"] + matches_brand[:5]
+    elif matches_sub_category:
+        # Give them the highly relevant ones, plus a few broad ones as a backup
+        result =["**Highly Relevant (Competitor/Sub-Category) Campaigns:**"] + matches_sub_category[:20]
+        if matches_strict:
+            result += ["**Other Broad Industry Campaigns:**"] + matches_strict[:10]
+        return result
     elif matches_strict:
-        return ["**Relevant Industry Campaigns Found:**"] + matches_strict[:50]
+        # If no sub-categories matched, fallback completely to the old logic
+        return["**Relevant Industry Campaigns Found:**"] + matches_strict[:50]
     
     return[]
 
@@ -1107,6 +1132,9 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
     
     strict_keywords = STRICT_INDUSTRY_MAP.get(target_brand_industry, [target_brand_industry.lower()])
     target_brand_clean = current_target_brand_name.lower().strip()
+    
+    # NEW: Extract the sub-category keywords generated by the LLM
+    sub_category_keywords = current_meeting_data.get('sub_category_keywords',[])
 
     print(f"    Searching Campaigns/Case Studies for STRICT MATCH ONLY: Brand='{target_brand_clean}' OR Industry='{strict_keywords[:2]}'")
 
@@ -1122,17 +1150,17 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
 
         if FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
             content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
-            extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords)
+            extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords)
             if extracted_rows: data_buckets["physical_campaigns"].extend(extracted_rows)
 
         elif FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
             content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
-            extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords)
+            extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords)
             if extracted_rows: data_buckets["digital_campaigns"].extend(extracted_rows)
 
         elif FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in fname.lower():
              content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
-             extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords)
+             extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords)
              if extracted_rows: data_buckets["case_studies"].extend(extracted_rows)
 
         # FIX: Removed the PDF parsing block entirely to prevent LLM context pollution and hallucinations.
