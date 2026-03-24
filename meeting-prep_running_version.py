@@ -905,46 +905,51 @@ def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, 
 # ==============================================================================
 # STRICT EXACT MATCH HELPER: ONLY Exact Brand OR Exact Industry (No broad fallbacks)
 # ==============================================================================
+# ==============================================================================
+# STRICT EXACT MATCH HELPER: Deep Scan for 2025/2026 Data
+# ==============================================================================
 def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean, strict_keywords, sub_category_keywords=None):
     """
     Scans sheet from BOTTOM (Newest) to TOP (Oldest).
-    STRICTLY filters for 2025 and 2026 data.
-    Ensures ONLY exact industry/sub-category matches are sent to the AI.
+    Filters ONLY for 2025 and 2026 executed data.
+    Pulls a massive chunk of data so the AI can smartly filter the exact products.
     """
     if sub_category_keywords is None:
-        sub_category_keywords =[]
+        sub_category_keywords = []
 
     matches_brand = []
-    matches_sub_category = []
+    matches_sub_category =[]
     matches_strict =[]
     
     if not isinstance(file_data_obj, list) or not file_data_obj: 
         return[]
     
     # Detect Columns
-    header_vals = file_data_obj[0].get("header", []) if isinstance(file_data_obj[0], dict) else[]
+    header_vals = file_data_obj[0].get("header",[]) if isinstance(file_data_obj[0], dict) else[]
     brand_col, ind_col, date_col = -1, -1, -1
 
     if header_vals:
-        lower_h = [str(h).strip().lower() for h in header_vals]
+        lower_h =[str(h).strip().lower() for h in header_vals]
         for idx, h in enumerate(lower_h):
             if "brand" in h: brand_col = idx
-            if any(x in h for x in ["industry", "category", "vertical"]): ind_col = idx
-            if any(x in h for x in ["year", "date", "timestamp"]): date_col = idx
+            if any(x in h for x in["industry", "category", "vertical"]): ind_col = idx
+            if any(x in h for x in["year", "date", "timestamp", "tentative"]): date_col = idx
 
-    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else []
-    if not data_rows: return[]
+    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else[]
+    if not data_rows: return []
+
+    valid_sub_kws =[k.strip().lower() for k in sub_category_keywords if k and len(k.strip()) > 2]
+    valid_industry_kws =[k.strip().lower() for k in strict_keywords if k and len(k.strip()) > 2]
 
     # Iterate Newest First (Bottom -> Top)
     for row_info in reversed(data_rows):
         vals = row_info.get('values',[])
         if not vals: continue
         
-        # Extract Brand and Industry first
         row_brand = str(vals[brand_col]).strip().lower() if brand_col != -1 and len(vals) > brand_col else ""
         row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
         
-        # 🛑 SAFEGUARD: If the row has no brand name, it's garbage data. Skip it entirely!
+        # 🛑 GARBAGE FILTER: Skip completely empty/unknown brand rows
         if not row_brand or row_brand in['nan', 'none', '', 'n/a', 'unknown']:
             continue
 
@@ -958,59 +963,45 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         entry = " | ".join(row_items)
         if len(entry) < 15: continue
         
-        # 🛑 STRICT DATE FILTER: Only look at 2025 and 2026 Executed Campaigns
-        if "2025" not in entry and "2026" not in entry:
+        # 🛑 STRICT DATE FILTER: Only process 2025, 2026, or 2027
+        if "2025" not in entry and "2026" not in entry and "2027" not in entry:
             continue
         
         # Priority 1: Exact Brand Match
         if brand_clean and len(brand_clean) > 2 and row_brand and len(row_brand) > 2:
             if (brand_clean in row_brand) or (row_brand in brand_clean):
-                if len(matches_brand) < 10:
+                if len(matches_brand) < 20: 
                     matches_brand.append(entry)
                 continue 
         
-        # Priority 2: Sub-Category / Competitor Match (Like-to-Like)
+        # Priority 2: Sub-Category / Competitor Match (Searches entire row)
+        entry_lower = entry.lower()
         is_sub_match = False
-        if sub_category_keywords:
-            valid_sub_kws =[k.strip().lower() for k in sub_category_keywords if k and len(k.strip()) > 2]
-            if valid_sub_kws:
-                # Scans the entire row (including subject line & activity) for sub-categories like "floor cleaner"
-                entry_lower = entry.lower()
-                if any(k in entry_lower for k in valid_sub_kws):
-                    is_sub_match = True
+        if valid_sub_kws and any(k in entry_lower for k in valid_sub_kws):
+            is_sub_match = True
                     
-        if is_sub_match and len(matches_sub_category) < 50: 
+        if is_sub_match and len(matches_sub_category) < 100: 
             matches_sub_category.append(entry)
-            continue # If it's a highly relevant match, skip the broad check
+            continue
             
-        # Priority 3: Strict Industry Match (Guarantees NO wrong matches)
-        valid_keywords =[k.strip().lower() for k in strict_keywords if k and len(k.strip()) > 2]
-        
-        if valid_keywords:
-            is_match = False
-            # Checks BOTH the industry column AND the brand column for strict industry keywords
-            if ind_col != -1 and row_ind and any(k in row_ind for k in valid_keywords):
-                is_match = True
-            elif brand_col != -1 and row_brand and any(k in row_brand for k in valid_keywords):
-                is_match = True
-                
-            if is_match and len(matches_strict) < 50: 
-                matches_strict.append(entry)
+        # Priority 3: Broad Industry Match 
+        # (Massive limit of 400 guarantees it reaches the Jan 2026 / Dec 2025 data!)
+        if valid_industry_kws:
+            if (ind_col != -1 and row_ind and any(k in row_ind for k in valid_industry_kws)) or \
+               (brand_col != -1 and row_brand and any(k in row_brand for k in valid_industry_kws)):
+                if len(matches_strict) < 400: 
+                    matches_strict.append(entry)
 
-    # Return Logic: Send the strictly filtered pools to Gemini
-    # Gemini's prompt will then pick 1, 2, 3, or a MAXIMUM of 4 from these pools.
+    # Return Logic: Combine the massive lists to give Gemini the full picture
+    final_output =[]
     if matches_brand:
-        return ["**Exact Brand Matches Found (2025-2026):**"] + matches_brand
-    elif matches_sub_category:
-        result =["**Highly Relevant (Competitor/Sub-Category) Campaigns (2025-2026):**"] + matches_sub_category
-        if matches_strict:
-            # Append a few strict industry matches just in case the AI needs more context
-            result += ["**Other Strict Industry Campaigns (2025-2026):**"] + matches_strict[:20]
-        return result
-    elif matches_strict:
-        return["**Strict Industry Campaigns Found (2025-2026):**"] + matches_strict
+        final_output += ["**Exact Brand Matches Found:**"] + matches_brand
+    if matches_sub_category:
+        final_output += ["**Highly Relevant (Competitor/Sub-Category) Campaigns:**"] + matches_sub_category
+    if matches_strict:
+        final_output +=["**Other Industry Campaigns (2025-2026):**"] + matches_strict
     
-    return
+    return final_output
 
 # ==============================================================================
 # MAIN FUNCTION: Powered by Strict Exact Mapping
