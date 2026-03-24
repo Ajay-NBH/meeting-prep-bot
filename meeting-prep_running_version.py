@@ -69,7 +69,7 @@ EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP = {
 
 PROCESSED_EVENTS_FILE = 'processed_event_ids.txt' # Simple file-based tracking for local runs
 # --- Feature Toggles ---
-ENABLE_IMAGE_GENERATION = False  # Set to False to completely skip image logic
+ENABLE_IMAGE_GENERATION = True  # Set to False to completely skip image logic
 
 
 
@@ -1541,35 +1541,34 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
 # =====================================================================
 # NEW: IMAGE GENERATION WORKFLOW (ART DIRECTOR & ARTIST)
 # =====================================================================
-def get_brand_visual_context(gemini_client, brand_name, industry):
-    """The Art Director: Uses Gemini to safely fetch brand colors and CURRENT LIVE CAMPAIGNS."""
+def get_brand_visual_context(gemini_client, brand_name, industry, generated_brief=""):
+    """The Art Director: Uses Gemini to fetch brand colors and extract the STRATEGIC ANGLE from the text brief."""
     if not gemini_client: return None
     
-    # Get the EXACT current date so the AI knows what has already passed
-    exact_current_date = datetime.datetime.now().strftime("%B %d, %Y")
-    
     prompt = f"""
-    You are an expert Brand Visual Strategist. Research the brand '{brand_name}' (Industry: {industry}) in India.
-    Today's Exact Date: {exact_current_date}.
+    You are an expert Brand Visual Strategist. Research the brand '{brand_name}' (Industry: {industry}) in India to find their visual identity.
+    
+    We have just generated a Pre-Meeting Brief for this brand. Review the text below:
+    ---
+    {generated_brief}
+    ---
     
     Task:
     1. Verify if this is a well-known brand with publicly identifiable brand colors and logos. If obscure, set "is_well_known" to false.
     2. Identify their primary 2 brand colors.
-    3. SEARCH FOR CURRENT CAMPAIGNS: Use Google Search to find what marketing campaign, slogan, or product launch '{brand_name}' is actively promoting RIGHT NOW in India. 
-    4. If you find a current campaign, use that as the "suggested_theme" (e.g., "Launch of new XYZ product", "Current 'Summer Ready' campaign"). 
-    5. If you CANNOT find a specific current campaign, suggest a theme based on an UPCOMING Indian festival or season relative to today's date ({exact_current_date}). DO NOT suggest past festivals (e.g., if Holi has passed, do not suggest it. Suggest Summer, IPL, Back-to-School, etc.).
+    3. EXTRACT THE STRATEGIC PITCH: Look specifically at the "Strategic Angle & Top Solutions", "The Big Idea", or "The Creative Hook" sections in the brief above. 
+    4. Formulate a "suggested_theme" that visually translates this exact strategy (e.g., "A hyper-local QR-code product sampling kiosk", "Digital health check-up camp registration"). Keep it highly descriptive but under 20 words.
     
     Return ONLY a valid JSON object:
     {{
         "is_well_known": true/false,
         "primary_colors": "e.g., Red and Gold",
-        "suggested_theme": "e.g., 'Festival of Diamonds' current campaign OR 'Vibrant Summer Collection'"
+        "suggested_theme": "e.g., 'Health check-up camp registration banner for affluent residents'"
     }}
     """
     
     try:
         grounding_tool = types.Tool(google_search=types.GoogleSearch())
-        # FIXED: Removed response_mime_type="application/json" which was causing the 400 Crash!
         config = types.GenerateContentConfig(temperature=0.1, tools=[grounding_tool]) 
         
         response = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
@@ -1580,8 +1579,8 @@ def get_brand_visual_context(gemini_client, brand_name, industry):
         print(f"  Visual context extraction failed for {brand_name}: {e}")
         return {"is_well_known": False}
 
-def generate_creative_with_gemini_image(gemini_client, brand_name, visual_context):
-    """The Artist: Generates the 3-in-1 vertical composite using proven Outbound logic."""
+def generate_creative_with_gemini_image(gemini_client, brand_name, industry, visual_context):
+    """The Artist: Generates the 3-in-1 vertical composite using the brief's strategy and industry context."""
     if not visual_context.get("is_well_known"):
         print(f"  Skipping image generation for {brand_name}: Brand too obscure.")
         return None
@@ -1593,45 +1592,41 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, visual_contex
     Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom.
     Each section must look like a candid smartphone photo taken inside a standard Indian residential society — NOT ultra-luxury, NOT studio lighting. Use natural, slightly overcast daylight.
 
+    # BRAND & INDUSTRY CONTEXT:
+    This is an advertisement for '{brand_name}', operating in the '{industry}' industry. 
+    If you do not know the exact perfect logo for '{brand_name}', you MUST use high-quality, professional imagery and generic icons that strongly represent the '{industry}' industry, utilizing their primary brand colors ({colors}). 
+
     - TOP SECTION — GATE BRANDING
       - A standard Indian apartment complex entrance. Black wrought-iron sliding gate.
-      - A thin, flat 4ft x 3ft horizontal ACP board displaying a '{brand_name}' ad, mounted on the gate bars. FLAT board, NOT a thick lightbox.
-      - The ad features their primary colors ({colors}) and focuses on the theme: "{theme}".
-      - Trees and apartment buildings visible naturally in the background.
-      - A watchman at the gatehouse casually checking a logbook. A resident walking past in the background, not looking at the ad.
+      - A thin, flat 4ft x 3ft horizontal ACP board displaying a '{brand_name}' ad, mounted on the gate bars.
+      - The ad features their primary colors ({colors}) and visually executes this strategic pitch: "{theme}". Include highly relevant visual elements for the '{industry}' industry.
+      - Trees and apartment buildings visible naturally in the background. Watchman and resident in background.
 
     - MIDDLE SECTION — LIFT BRANDING
       - Brushed stainless steel elevator interior with vertical metallic grain texture.
       - An A3 size printed poster in a thin clean white acrylic frame showing the '{brand_name}' ad, mounted on the wall.
-      - The poster uses the colors ({colors}) and the theme: "{theme}".
-      - Elevator buttons and CCTV camera in corner visible.
-      - A resident entering the lift holding a grocery bag, a maintenance worker visible in hallway behind — both going about their day.
+      - The poster uses the colors ({colors}), reflects the '{industry}' industry, and echoes the strategic pitch: "{theme}".
+      - Elevator buttons and CCTV camera in corner visible. Resident entering lift.
 
     - BOTTOM SECTION — DIGITAL IN-APP (PAC)
       - A clean, high-fidelity digital UI mockup (screenshot) of the NoBrokerHood mobile app on a smartphone screen.
-      - TOP OF SCREEN: Clean iOS/Android style status bar (time, battery, signal).
       - APP HEADER: White header with "Back" button icon and title "My Visitors".
       - THE PAC OVERLAY: A large, crisp white card with rounded corners overlaying the screen.
-          - Includes a green circular icon with a white checkmark.
           - Bold black text: "Pre approval created".
-          - Small grey text: "for your {brand_name} delivery".
-      - THE AD CREATIVE: Below the notification card, a large, high-resolution square advertisement for '{brand_name}' featuring the theme "{theme}" and colors ({colors}).
-      - BACKGROUND OF UI: The apartment list behind the overlay should be darkened (dimmed) to make the notification card and ad pop.
-      - NO photography elements, NO hands, NO table. Just a clean digital graphic.
+          - Small grey text: "for your {brand_name} request".
+      - THE AD CREATIVE: Below the notification card, a large, high-resolution square advertisement for '{brand_name}' featuring the pitch "{theme}", industry elements ('{industry}'), and colors ({colors}).
+      - BACKGROUND OF UI: The apartment list behind the overlay should be darkened (dimmed).
 
     # LAYOUT RULES:
     - You MUST show all 3 panels vertically (top gate, middle lift, bottom in-app).
     - Separate sections with a thin white horizontal divider line.
-    - BRAND INTEGRITY: The {brand_name} branding and logo MUST be of professional marketing quality, with perfectly sharp typography and zero distortion.
-    - Each ad creative must look like a high-end, newly printed execution, maintaining the brand’s premium identity in every panel.
+    - BRAND INTEGRITY: The {brand_name} branding MUST be of professional marketing quality.
     - No NoBrokerHood logos on any physical surfaces. Only '{brand_name}' branding visible on the ad panels.
-    - Overall feel: Real, natural, candid, authentic Indian community life.
     """
     
-    print(f"  🎨 Generating 3-in-1 Gemini Image creative for {brand_name}...")
+    print(f"  🎨 Generating 3-in-1 Gemini Image creative for {brand_name} (Industry: {industry})...")
     
     try:
-        # PROVEN LOGIC: Using generate_content with response_modalities just like your outbound script
         response = gemini_client.models.generate_content(
             model="gemini-3-pro-image-preview",
             contents=image_prompt,
@@ -1640,7 +1635,6 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, visual_contex
             )
         )
 
-        # Extract image from response parts
         if response.candidates:
             for part in response.candidates[0].content.parts:
                 if part.inline_data and part.inline_data.mime_type.startswith("image/"):
@@ -2464,23 +2458,32 @@ def main():
 
         print(f"  Proceeding with brief generation for: {meeting_data['brand_name']}")
         
-        # =====================================================================
-        # IMAGE GENERATION (PAUSED)
-        # =====================================================================
-        creative_image_bytes = None
-        if ENABLE_IMAGE_GENERATION:
-            print(f"  🎨 Image Generation is ENABLED. Processing...")
-            try:
-                visual_context = get_brand_visual_context(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'])
-                if visual_context:
-                    creative_image_bytes = generate_creative_with_gemini_image(gemini_llm_client, meeting_data['brand_name'], visual_context)
-            except Exception as e:
-                print(f"  Warning: Failed to generate creative image: {e}")
-        else:
-            print(f"  ℹ️ Image Generation is currently PAUSED. Skipping...")
-        # =====================================================================
-
+        # 1. THE WRITER: Generate the Text Brief FIRST so we have the strategy
         generated_brief = generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, meeting_data, internal_nbh_data_for_brand_str)
+
+        # 2. IS THIS A TEST MEETING? Check if "Testing" is in the calendar title (case-insensitive)
+        is_testing_meeting = "testing" in meeting_data['title'].lower()
+        creative_image_bytes = None
+
+        if ENABLE_IMAGE_GENERATION and is_testing_meeting:
+            print(f"  🧪 TESTING MODE DETECTED for '{meeting_data['title']}'. Generating strategic image...")
+            if generated_brief and "Error:" not in generated_brief:
+                try:
+                    # THE ART DIRECTOR: Extract the strategy from the generated text
+                    visual_context = get_brand_visual_context(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], generated_brief)
+                    
+                    if visual_context:
+                        # THE ARTIST: Draw the image using the Brand, Industry, and extracted Strategy
+                        creative_image_bytes = generate_creative_with_gemini_image(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], visual_context)
+                except Exception as e:
+                    print(f"  Warning: Failed to generate creative image: {e}")
+            else:
+                print(f"  ⚠️ Brief generation failed. Skipping image generation.")
+                
+        elif ENABLE_IMAGE_GENERATION and not is_testing_meeting:
+            print(f"  ⏭️ Skipping Image Generation: '{meeting_data['title']}' is not a test meeting.")
+        else:
+            print(f"  ℹ️ Image Generation is completely disabled in settings. Skipping...")
 
         FEEDBACK_FORM_URL = "https://forms.gle/Ho9XLKsuGYhWBrBw7"
 
