@@ -1836,7 +1836,7 @@ def events_to_update(meeting_ids, events):
         return events_to_update
     
 
-def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded_emails, designations):
+def update_events_in_sheets(sheet_id, copy_sheet_id, events_to_update, sheets_service, excluded_emails, designations):
 
     meeting_ids = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A2:A")
     master_sheet_columns = read_data_from_sheets(sheet_id, sheets_service, "Meeting_data!A1:BZ1")[0]  # Get the header row
@@ -1904,6 +1904,16 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                     .batchUpdate(spreadsheetId=sheet_id, body=body)
                     .execute()
                     )
+                
+                # --- NEW: APPEND TO COPY SHEET (ONLY MEETING_DATA TAB) ---
+                body_copy = {
+                    "requests":[
+                        { "appendCells": { "sheetId": 0, "rows": values, "fields": "userEnteredValue" } }
+                    ]
+                }
+                sheets_service.spreadsheets().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
+                # ---------------------------------------------------------
+                
                 print(f"Appended row: {title}")
                 owner = None
                 hierarchy_chain = []
@@ -1932,6 +1942,17 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                             .batchUpdate(spreadsheetId=sheet_id, body=update_body)
                             .execute()
                             )
+                            
+                        # --- NEW: UPDATE COPY SHEET (ONLY MEETING_DATA TAB) ---
+                        update_body_copy = {
+                            "valueInputOption": 'USER_ENTERED',
+                            "data":[
+                                {"range": f"Meeting_data!{owner_column_index_master}{sheet_index + i}:{owner_update_column_index_master}{sheet_index + i}", "values": values}
+                            ],
+                        }
+                        sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=update_body_copy).execute()
+                        # ------------------------------------------------------
+                        
                         print(f"Updated owner and processed status for {title}")
                     except HttpError as error:
                         print(f"An error occurred while updating owner for {title}: {error}")
@@ -1973,6 +1994,13 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                         valueInputOption='USER_ENTERED',
                         body=body
                     ).execute()
+                    
+                    # --- NEW: UPDATE COPY SHEET ---
+                    sheets_service.spreadsheets().values().update(
+                        spreadsheetId=copy_sheet_id, range=rng, valueInputOption='USER_ENTERED', body=body
+                    ).execute()
+                    # ------------------------------
+                    
                     print(f"Updated main participant and designation for {title}")
                 except HttpError as error:
                     print(f"An error occurred while updating main participant for {title}: {error}")
@@ -2054,6 +2082,7 @@ def main():
     
     # Load environment variables
     master_sheet_id = "1xtB1KUAXJ6IKMQab0Sb0NJfQppCKLkUERZ4PMZlNfOw"
+    copy_sheet_id = "1wWwjvAwXCAnPH3cAXSCaXlyDA7E9h_YrP4jaNFP9qvY" # <-- ADDED
     calendar_token = os.getenv("CALENDAR_TOKEN")
     gmail_token = os.getenv("GMAIL_TOKEN")
     drive_token = os.getenv("DRIVE_TOKEN")
@@ -2118,7 +2147,8 @@ def main():
         print("No new meetings to update in master sheet.")
     else:
         print(f"{len(events_to_update_list)} new meetings found")
-        update_events_in_sheets(master_sheet_id, events_to_update_list, sheets_service, NBH_SERVICE_ACCOUNTS_TO_EXCLUDE, designations)
+        # --- PASSED copy_sheet_id HERE ---
+        update_events_in_sheets(master_sheet_id, copy_sheet_id, events_to_update_list, sheets_service, NBH_SERVICE_ACCOUNTS_TO_EXCLUDE, designations)
     
 
     updated_meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
@@ -2196,7 +2226,7 @@ def main():
             update_values = [[brand_details['brand_name'], brand_details['industry']]]
             body = {
             "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
-            "data": [
+            "data":[
                 {"range": f"Meeting_data!F{index_of_event}:G{index_of_event}", "values": update_values},
                 {"range": f"Audit_and_Training!F{index_of_event}:G{index_of_event}", "values": update_values},
                 ],
@@ -2208,13 +2238,22 @@ def main():
                     .batchUpdate(spreadsheetId=master_sheet_id, body=body)
                     .execute()
                     )
+                
+                # --- NEW: COPY SHEET UPDATE (ONLY MEETING_DATA TAB) ---
+                body_copy = {
+                    "valueInputOption": 'USER_ENTERED', 
+                    "data":[{"range": f"Meeting_data!F{index_of_event}:G{index_of_event}", "values": update_values}]
+                }
+                sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
+                # ------------------------------------------------------
+                
                 print(f"  Master sheet updated successfully for event ID '{event_id}'.")
                 try:
                     print(f" Resetting flag to TRUE for updating owner's sheet for event ID '{event_id}'")
                     values = [["TRUE"]]
                     body = {
                         "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
-                        "data": [
+                        "data":[
                             {"range": f"Meeting_data!{column_index_master['Owner sheet to be updated']}{index_of_event}:{column_index_master['Owner sheet to be updated']}{index_of_event}", "values": values},
                             {"range": f"Audit_and_Training!{column_index_audit['Owner sheet to be updated']}{index_of_event}:{column_index_audit['Owner sheet to be updated']}{index_of_event}", "values": values},
                             ],
@@ -2225,6 +2264,15 @@ def main():
                         .batchUpdate(spreadsheetId=master_sheet_id, body=body)
                         .execute()
                         )
+                        
+                    # --- NEW: COPY SHEET UPDATE (ONLY MEETING_DATA TAB) ---
+                    body_copy = {
+                        "valueInputOption": 'USER_ENTERED', 
+                        "data":[{"range": f"Meeting_data!{column_index_master['Owner sheet to be updated']}{index_of_event}:{column_index_master['Owner sheet to be updated']}{index_of_event}", "values": values}]
+                    }
+                    sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
+                    # ------------------------------------------------------
+                        
                     print(f"  Owner sheet flag reset for '{event_id}'.")
                 except HttpError as error:
                     print(f"  Error updating master sheet for event ID '{event_id}': {error}")
@@ -2270,7 +2318,7 @@ def main():
         update_values = [[current_brand_name_for_meeting, target_brand_industry]]
         body = {
             "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
-            "data": [
+            "data":[
                 {"range": f"Meeting_data!F{index_of_event}:G{index_of_event}", "values": update_values},
                 {"range": f"Audit_and_Training!F{index_of_event}:G{index_of_event}", "values": update_values},
                 ],
@@ -2282,13 +2330,22 @@ def main():
                 .batchUpdate(spreadsheetId=master_sheet_id, body=body)
                 .execute()
                 )
+                
+            # --- NEW: COPY SHEET UPDATE (ONLY MEETING_DATA TAB) ---
+            body_copy = {
+                "valueInputOption": 'USER_ENTERED', 
+                "data":[{"range": f"Meeting_data!F{index_of_event}:G{index_of_event}", "values": update_values}]
+            }
+            sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
+            # ------------------------------------------------------
+                
             print(f"  Master sheet updated successfully for event ID '{event_id}'.")
             try:
                 print(f" Resetting flag to TRUE for updating owner's sheet for event ID '{event_id}'")
                 values = [["TRUE"]]
                 body = {
                     "valueInputOption": 'USER_ENTERED',  # Use USER_ENTERED to allow date formatting
-                    "data": [
+                    "data":[
                         {"range": f"Meeting_data!{column_index_master['Owner sheet to be updated']}{index_of_event}:{column_index_master['Owner sheet to be updated']}{index_of_event}", "values": values},
                         {"range": f"Audit_and_Training!{column_index_audit['Owner sheet to be updated']}{index_of_event}:{column_index_audit['Owner sheet to be updated']}{index_of_event}", "values": values},
                         ],
@@ -2299,6 +2356,15 @@ def main():
                     .batchUpdate(spreadsheetId=master_sheet_id, body=body)
                     .execute()
                     )
+                    
+                # --- NEW: COPY SHEET UPDATE (ONLY MEETING_DATA TAB) ---
+                body_copy = {
+                    "valueInputOption": 'USER_ENTERED', 
+                    "data":[{"range": f"Meeting_data!{column_index_master['Owner sheet to be updated']}{index_of_event}:{column_index_master['Owner sheet to be updated']}{index_of_event}", "values": values}]
+                }
+                sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
+                # ------------------------------------------------------
+                    
                 print(f"  Owner sheet flag reset for event ID '{event_id}'.")
             
             except HttpError as error:
@@ -2553,6 +2619,15 @@ def main():
                         .batchUpdate(spreadsheetId=master_sheet_id, body=body)
                         .execute()
                         )
+                        
+                    # --- NEW: COPY SHEET UPDATE (ONLY MEETING_DATA TAB) ---
+                    body_copy = {
+                        "valueInputOption": 'USER_ENTERED', 
+                        "data":[{"range": f"Meeting_data!H{index_of_event}:H{index_of_event}", "values": update_values}]
+                    }
+                    sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
+                    # ------------------------------------------------------
+                        
                     print(f"  Master sheet updated with Google Doc link for event ID '{event_id}'.")
                     try:
                         print(f" Resetting flag to TRUE for updating owner's sheet for event ID '{event_id}'")
@@ -2570,6 +2645,15 @@ def main():
                             .batchUpdate(spreadsheetId=master_sheet_id, body=body)
                             .execute()
                             )
+                            
+                        # --- NEW: COPY SHEET UPDATE (ONLY MEETING_DATA TAB) ---
+                        body_copy = {
+                            "valueInputOption": 'USER_ENTERED', 
+                            "data":[{"range": f"Meeting_data!{column_index_master['Owner sheet to be updated']}{index_of_event}:{column_index_master['Owner sheet to be updated']}{index_of_event}", "values": values}]
+                        }
+                        sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
+                        # ------------------------------------------------------
+                            
                         print(f"  Owner sheet flag reset for event ID '{event_id}'.")
                     except HttpError as error:
                         print(f"  Error while resetting flag for '{event_id}': {error}")
