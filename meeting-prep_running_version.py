@@ -908,32 +908,31 @@ def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, 
 def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean, strict_keywords, sub_category_keywords=None):
     """
     Scans sheet from BOTTOM (Newest) to TOP (Oldest).
-    Priority 1: Exact Brand Match
-    Priority 2: Sub-Category / Direct Competitor Match (Like-to-Like)
-    Priority 3: Broad Industry Match (Safe Fallback)
+    STRICTLY filters for 2025 and 2026 data.
+    Ensures ONLY exact industry/sub-category matches are sent to the AI.
     """
     if sub_category_keywords is None:
-        sub_category_keywords = []
+        sub_category_keywords =[]
 
     matches_brand = []
     matches_sub_category = []
     matches_strict =[]
     
     if not isinstance(file_data_obj, list) or not file_data_obj: 
-        return []
+        return[]
     
     # Detect Columns
-    header_vals = file_data_obj[0].get("header",[]) if isinstance(file_data_obj[0], dict) else[]
+    header_vals = file_data_obj[0].get("header", []) if isinstance(file_data_obj[0], dict) else[]
     brand_col, ind_col, date_col = -1, -1, -1
 
     if header_vals:
-        lower_h =[str(h).strip().lower() for h in header_vals]
+        lower_h = [str(h).strip().lower() for h in header_vals]
         for idx, h in enumerate(lower_h):
             if "brand" in h: brand_col = idx
             if any(x in h for x in ["industry", "category", "vertical"]): ind_col = idx
             if any(x in h for x in ["year", "date", "timestamp"]): date_col = idx
 
-    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else[]
+    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else []
     if not data_rows: return[]
 
     # Iterate Newest First (Bottom -> Top)
@@ -955,13 +954,19 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
                 val = str(vals[i]).strip()
                 if val and val.lower() not in ['nan', 'none', '', 'n/a']:
                     row_items.append(f"{header_vals[i]}: {val}")
+        
         entry = " | ".join(row_items)
         if len(entry) < 15: continue
+        
+        # 🛑 STRICT DATE FILTER: Only look at 2025 and 2026 Executed Campaigns
+        if "2025" not in entry and "2026" not in entry:
+            continue
         
         # Priority 1: Exact Brand Match
         if brand_clean and len(brand_clean) > 2 and row_brand and len(row_brand) > 2:
             if (brand_clean in row_brand) or (row_brand in brand_clean):
-                matches_brand.append(entry)
+                if len(matches_brand) < 10:
+                    matches_brand.append(entry)
                 continue 
         
         # Priority 2: Sub-Category / Competitor Match (Like-to-Like)
@@ -969,19 +974,21 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         if sub_category_keywords:
             valid_sub_kws =[k.strip().lower() for k in sub_category_keywords if k and len(k.strip()) > 2]
             if valid_sub_kws:
-                if (ind_col != -1 and row_ind and any(k in row_ind for k in valid_sub_kws)) or \
-                   (brand_col != -1 and row_brand and any(k in row_brand for k in valid_sub_kws)):
+                # Scans the entire row (including subject line & activity) for sub-categories like "floor cleaner"
+                entry_lower = entry.lower()
+                if any(k in entry_lower for k in valid_sub_kws):
                     is_sub_match = True
                     
-        if is_sub_match and len(matches_sub_category) < 20: 
+        if is_sub_match and len(matches_sub_category) < 50: 
             matches_sub_category.append(entry)
-            continue # If it's a highly relevant match, skip the broad check to prevent duplicates
+            continue # If it's a highly relevant match, skip the broad check
             
-        # Priority 3: Strict Industry Match (Original Fallback)
+        # Priority 3: Strict Industry Match (Guarantees NO wrong matches)
         valid_keywords =[k.strip().lower() for k in strict_keywords if k and len(k.strip()) > 2]
         
         if valid_keywords:
             is_match = False
+            # Checks BOTH the industry column AND the brand column for strict industry keywords
             if ind_col != -1 and row_ind and any(k in row_ind for k in valid_keywords):
                 is_match = True
             elif brand_col != -1 and row_brand and any(k in row_brand for k in valid_keywords):
@@ -990,20 +997,20 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
             if is_match and len(matches_strict) < 50: 
                 matches_strict.append(entry)
 
-    # Return Logic (Safely combines the tiers)
+    # Return Logic: Send the strictly filtered pools to Gemini
+    # Gemini's prompt will then pick 1, 2, 3, or a MAXIMUM of 4 from these pools.
     if matches_brand:
-        return["**Exact Brand Matches Found:**"] + matches_brand[:5]
+        return ["**Exact Brand Matches Found (2025-2026):**"] + matches_brand
     elif matches_sub_category:
-        # Give them the highly relevant ones, plus a few broad ones as a backup
-        result =["**Highly Relevant (Competitor/Sub-Category) Campaigns:**"] + matches_sub_category[:20]
+        result =["**Highly Relevant (Competitor/Sub-Category) Campaigns (2025-2026):**"] + matches_sub_category
         if matches_strict:
-            result += ["**Other Broad Industry Campaigns:**"] + matches_strict[:10]
+            # Append a few strict industry matches just in case the AI needs more context
+            result += ["**Other Strict Industry Campaigns (2025-2026):**"] + matches_strict[:20]
         return result
     elif matches_strict:
-        # If no sub-categories matched, fallback completely to the old logic
-        return["**Relevant Industry Campaigns Found:**"] + matches_strict[:50]
+        return["**Strict Industry Campaigns Found (2025-2026):**"] + matches_strict
     
-    return[]
+    return
 
 # ==============================================================================
 # MAIN FUNCTION: Powered by Strict Exact Mapping
