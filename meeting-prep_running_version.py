@@ -1531,6 +1531,11 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
         if not brief_content.strip():
             return "Error: Gemini returned an empty brief."
             
+        # ========== NEW FIX: SWEEP CITATION HALLUCINATIONS ==========
+        # Invisibly deletes any[cite: x, y, z...] tags the AI tries to print
+        brief_content = re.sub(r'\[cite:.*?\]', '', brief_content)
+        # ============================================================
+            
         return brief_content
     except Exception as e:
         print(f"  Error during Gemini API call: {e}")
