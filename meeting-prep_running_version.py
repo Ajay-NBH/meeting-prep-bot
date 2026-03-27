@@ -2082,6 +2082,12 @@ def main():
     
     Handles error conditions gracefully, including missing services, ambiguous brand extraction, and LLM failures, with appropriate notifications and fallback logic.
     """
+    # --- NEW: TIME TRACKER FOR GITHUB ACTIONS ---
+    import time
+    script_start_time = time.time()
+    MAX_EXECUTION_TIME = 14 * 60  # 14 minutes in seconds
+    # --------------------------------------------
+
     print(f"Script started at {datetime.datetime.now()}")
     print(f"Using NBH GDrive Folder ID: {NBH_GDRIVE_FOLDER_ID}")
     
@@ -2161,6 +2167,13 @@ def main():
     processed_ids_local_file = load_processed_event_ids()
 
     for event_payload in upcoming_events:
+        # --- NEW: TIMEOUT CHECK ---
+        if time.time() - script_start_time > MAX_EXECUTION_TIME:
+            print("\n⏳ Approaching GitHub Actions 18-min limit. Stopping gracefully.")
+            print("Remaining meetings will be safely processed in the next scheduled run.")
+            break  # Exits the loop safely without causing an error
+        # --------------------------
+
         event_id = event_payload['id']
         event_summary = event_payload.get('summary', 'No Title')
         event_description_for_tag_check = event_payload.get('description')
@@ -2532,12 +2545,11 @@ def main():
         # 1. THE WRITER: Generate the Text Brief FIRST so we have the strategy
         generated_brief = generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, meeting_data, internal_nbh_data_for_brand_str)
 
-        # 2. IS THIS A TEST MEETING? Check if "Testing" is in the calendar title (case-insensitive)
-        is_testing_meeting = "testing" in meeting_data['title'].lower()
+        # 2. IMAGE GENERATION (NOW LIVE FOR ALL MEETINGS)
         creative_image_bytes = None
 
-        if ENABLE_IMAGE_GENERATION and is_testing_meeting:
-            print(f"  🧪 TESTING MODE DETECTED for '{meeting_data['title']}'. Generating strategic image...")
+        if ENABLE_IMAGE_GENERATION:
+            print(f"  🎨 LIVE MODE: Generating strategic image for '{meeting_data['title']}'...")
             if generated_brief and "Error:" not in generated_brief:
                 try:
                     # THE ART DIRECTOR: Extract the strategy from the generated text
@@ -2550,9 +2562,6 @@ def main():
                     print(f"  Warning: Failed to generate creative image: {e}")
             else:
                 print(f"  ⚠️ Brief generation failed. Skipping image generation.")
-                
-        elif ENABLE_IMAGE_GENERATION and not is_testing_meeting:
-            print(f"  ⏭️ Skipping Image Generation: '{meeting_data['title']}' is not a test meeting.")
         else:
             print(f"  ℹ️ Image Generation is completely disabled in settings. Skipping...")
 
