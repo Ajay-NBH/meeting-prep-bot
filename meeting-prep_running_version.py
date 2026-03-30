@@ -2377,12 +2377,12 @@ def main():
                     )
                     
                 # --- NEW: COPY SHEET UPDATE (ONLY MEETING_DATA TAB) ---
-                    body_copy = {
+                body_copy = {
                         "valueInputOption": 'USER_ENTERED', 
                         "data":[{"range": f"Meeting_data!AI{index_of_event}:AI{index_of_event}", "values": values}]
-                    }
-                    sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
-                    # ------------------------------------------------------
+                }
+                sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
+                # ------------------------------------------------------
                     
                 print(f"  Owner sheet flag reset for event ID '{event_id}'.")
             
