@@ -1952,7 +1952,7 @@ def update_events_in_sheets(sheet_id, copy_sheet_id, events_to_update, sheets_se
                         update_body_copy = {
                             "valueInputOption": 'USER_ENTERED',
                             "data":[
-                                {"range": f"Meeting_data!{owner_column_index_master}{sheet_index + i}:{owner_update_column_index_master}{sheet_index + i}", "values": values}
+                                {"range": f"Meeting_data!AH{sheet_index + i}:AI{sheet_index + i}", "values": values}
                             ],
                         }
                         sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=update_body_copy).execute()
@@ -2001,8 +2001,9 @@ def update_events_in_sheets(sheet_id, copy_sheet_id, events_to_update, sheets_se
                     ).execute()
                     
                     # --- NEW: UPDATE COPY SHEET ---
+                    rng_copy = f"Meeting_data!AJ{sheet_index + i}:AL{sheet_index + i}"
                     sheets_service.spreadsheets().values().update(
-                        spreadsheetId=copy_sheet_id, range=rng, valueInputOption='USER_ENTERED', body=body
+                        spreadsheetId=copy_sheet_id, range=rng_copy, valueInputOption='USER_ENTERED', body=body
                     ).execute()
                     # ------------------------------
                     
@@ -2286,7 +2287,7 @@ def main():
                     # --- NEW: COPY SHEET UPDATE (ONLY MEETING_DATA TAB) ---
                     body_copy = {
                         "valueInputOption": 'USER_ENTERED', 
-                        "data":[{"range": f"Meeting_data!{column_index_master['Owner sheet to be updated']}{index_of_event}:{column_index_master['Owner sheet to be updated']}{index_of_event}", "values": values}]
+                        "data":[{"range": f"Meeting_data!AI{index_of_event}:AI{index_of_event}", "values": values}]
                     }
                     sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
                     # ------------------------------------------------------
@@ -2376,12 +2377,12 @@ def main():
                     )
                     
                 # --- NEW: COPY SHEET UPDATE (ONLY MEETING_DATA TAB) ---
-                body_copy = {
-                    "valueInputOption": 'USER_ENTERED', 
-                    "data":[{"range": f"Meeting_data!{column_index_master['Owner sheet to be updated']}{index_of_event}:{column_index_master['Owner sheet to be updated']}{index_of_event}", "values": values}]
-                }
-                sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
-                # ------------------------------------------------------
+                    body_copy = {
+                        "valueInputOption": 'USER_ENTERED', 
+                        "data":[{"range": f"Meeting_data!AI{index_of_event}:AI{index_of_event}", "values": values}]
+                    }
+                    sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
+                    # ------------------------------------------------------
                     
                 print(f"  Owner sheet flag reset for event ID '{event_id}'.")
             
@@ -2663,7 +2664,7 @@ def main():
                         # --- NEW: COPY SHEET UPDATE (ONLY MEETING_DATA TAB) ---
                         body_copy = {
                             "valueInputOption": 'USER_ENTERED', 
-                            "data":[{"range": f"Meeting_data!{column_index_master['Owner sheet to be updated']}{index_of_event}:{column_index_master['Owner sheet to be updated']}{index_of_event}", "values": values}]
+                            "data":[{"range": f"Meeting_data!AI{index_of_event}:AI{index_of_event}", "values": values}]
                         }
                         sheets_service.spreadsheets().values().batchUpdate(spreadsheetId=copy_sheet_id, body=body_copy).execute()
                         # ------------------------------------------------------
