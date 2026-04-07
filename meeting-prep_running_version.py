@@ -1338,7 +1338,8 @@ NBH_SERVICE_ACCOUNTS_TO_EXCLUDE = { # Emails to exclude from the displayed NBH a
     AGENT_EMAIL.lower(),
     "pia.brand@nobroker.in",
     "pia@nobroker.in",
-    "nbh.meeting@gmail.com"
+    "nbh.meeting@gmail.com",
+    "meetings.regional@gmail.com" 
 }
 
 
@@ -1694,7 +1695,7 @@ def send_gmail_message(gmail_service, user_id, message_body):
 
 def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_bytes=None):
     """Sends the brief email, injecting the AI creative if available. Includes TEST MODE."""
-    EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in","pia.hood@nobroker.in"}
+    EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in", "pia.hood@nobroker.in", "meetings.regional@gmail.com"} 
 
     nbh_recipient_emails =[]
     attendees_list = meeting_data.get('nbh_attendees',[]) 
