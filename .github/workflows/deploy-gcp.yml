@@ -26,13 +26,13 @@ jobs:
       run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
     - name: Write Secret Files
-      env:
-        CRED: ${{ secrets.GOOGLE_CREDENTIALS_JSON_CONTENT }}
-        CAL: ${{ secrets.GOOGLE_TOKEN_CALENDAR_JSON }}
-        GMAIL: ${{ secrets.GOOGLE_TOKEN_GMAIL_JSON }}
-        DRIVE: ${{ secrets.GOOGLE_TOKEN_DRIVE_JSON }}
-        SHEETS: ${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}
-        DOCS: ${{ secrets.GOOGLE_TOKEN_DOCS_JSON }}
+      run: |
+        echo '${{ secrets.GOOGLE_CREDENTIALS_JSON_CONTENT }}' > credentials.json
+        echo '${{ secrets.GOOGLE_TOKEN_CALENDAR_JSON }}' > calendar_token.json
+        echo '${{ secrets.GOOGLE_TOKEN_GMAIL_JSON }}' > gmail_token.json
+        echo '${{ secrets.GOOGLE_TOKEN_DRIVE_JSON }}' > drive_token.json
+        echo '${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}' > sheets_token.json
+        echo '${{ secrets.GOOGLE_TOKEN_DOCS_JSON }}' > docs_token.json
       run: |
         cat <<< "$CRED" > credentials.json
         cat <<< "$CAL" > calendar_token.json
