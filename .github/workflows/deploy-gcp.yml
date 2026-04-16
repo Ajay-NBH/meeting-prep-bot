@@ -33,13 +33,6 @@ jobs:
         echo '${{ secrets.GOOGLE_TOKEN_DRIVE_JSON }}' > drive_token.json
         echo '${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}' > sheets_token.json
         echo '${{ secrets.GOOGLE_TOKEN_DOCS_JSON }}' > docs_token.json
-      run: |
-        cat <<< "$CRED" > credentials.json
-        cat <<< "$CAL" > calendar_token.json
-        cat <<< "$GMAIL" > gmail_token.json
-        cat <<< "$DRIVE" > drive_token.json
-        cat <<< "$SHEETS" > sheets_token.json
-        cat <<< "$DOCS" > docs_token.json
 
     - name: Build and Push Docker Image
       run: |
