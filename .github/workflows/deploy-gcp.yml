@@ -44,23 +44,24 @@ jobs:
         def clean(val):
             if not val: return ""
             try:
+                # This flattens the JSON safely into a single line
                 return json.dumps(json.loads(val))
             except:
                 return val.strip()
 
         with open(".env", "w") as f:
-            f.write(f"GOOGLE_CLOUD_PROJECT={os.environ.get(\"GCP_PROJECT_ID\", \"\")}\n")
+            f.write("GOOGLE_CLOUD_PROJECT=" + os.environ.get("GCP_PROJECT_ID", "") + "\n")
             f.write("PUBSUB_TOPIC_ID=calendar-updates\n")
             f.write("CI=true\n")
-            f.write(f"GEMINI_API_KEY={os.environ.get(\"GEMINI_API_KEY\", \"\")}\n")
-            f.write(f"NBH_GDRIVE_FOLDER_ID={os.environ.get(\"NBH_GDRIVE_FOLDER_ID\", \"\")}\n")
-            f.write(f"ADMIN_EMAIL_FOR_NOTIFICATIONS={os.environ.get(\"ADMIN_EMAIL_FOR_NOTIFICATIONS\", \"\")}\n")
-            f.write(f"GOOGLE_CREDENTIALS_JSON_CONTENT={clean(os.environ.get(\"CRED\"))}\n")
-            f.write(f"GOOGLE_TOKEN_JSON_CALENDAR={clean(os.environ.get(\"CAL\"))}\n")
-            f.write(f"GOOGLE_TOKEN_JSON_GMAIL={clean(os.environ.get(\"GMAIL\"))}\n")
-            f.write(f"GOOGLE_TOKEN_JSON_DRIVE={clean(os.environ.get(\"DRIVE\"))}\n")
-            f.write(f"GOOGLE_TOKEN_JSON_SHEETS={clean(os.environ.get(\"SHEETS\"))}\n")
-            f.write(f"GOOGLE_TOKEN_JSON_DOCS={clean(os.environ.get(\"DOCS\"))}\n")
+            f.write("GEMINI_API_KEY=" + os.environ.get("GEMINI_API_KEY", "") + "\n")
+            f.write("NBH_GDRIVE_FOLDER_ID=" + os.environ.get("NBH_GDRIVE_FOLDER_ID", "") + "\n")
+            f.write("ADMIN_EMAIL_FOR_NOTIFICATIONS=" + os.environ.get("ADMIN_EMAIL_FOR_NOTIFICATIONS", "") + "\n")
+            f.write("GOOGLE_CREDENTIALS_JSON_CONTENT=" + clean(os.environ.get("CRED")) + "\n")
+            f.write("GOOGLE_TOKEN_JSON_CALENDAR=" + clean(os.environ.get("CAL")) + "\n")
+            f.write("GOOGLE_TOKEN_JSON_GMAIL=" + clean(os.environ.get("GMAIL")) + "\n")
+            f.write("GOOGLE_TOKEN_JSON_DRIVE=" + clean(os.environ.get("DRIVE")) + "\n")
+            f.write("GOOGLE_TOKEN_JSON_SHEETS=" + clean(os.environ.get("SHEETS")) + "\n")
+            f.write("GOOGLE_TOKEN_JSON_DOCS=" + clean(os.environ.get("DOCS")) + "\n")
         '
 
     - name: Build and Push Docker Image
