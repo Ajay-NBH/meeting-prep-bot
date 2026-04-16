@@ -2013,12 +2013,7 @@ def main():
     
     Handles error conditions gracefully, including missing services, ambiguous brand extraction, and LLM failures, with appropriate notifications and fallback logic.
     """
-    # --- NEW: TIME TRACKER FOR GITHUB ACTIONS ---
-    import time
-    script_start_time = time.time()
-    MAX_EXECUTION_TIME = 14 * 60  # 14 minutes in seconds
-    # --------------------------------------------
-
+    
     print(f"Script started at {datetime.datetime.now()}")
     print(f"Using NBH GDrive Folder ID: {NBH_GDRIVE_FOLDER_ID}")
     
@@ -2096,13 +2091,7 @@ def main():
     processed_ids_local_file = load_processed_event_ids()
 
     for event_payload in upcoming_events:
-        # --- NEW: TIMEOUT CHECK ---
-        if time.time() - script_start_time > MAX_EXECUTION_TIME:
-            print("\n⏳ Approaching GitHub Actions 18-min limit. Stopping gracefully.")
-            print("Remaining meetings will be safely processed in the next scheduled run.")
-            break  # Exits the loop safely without causing an error
-        # --------------------------
-
+        
         event_id = event_payload['id']
         event_summary = event_payload.get('summary', 'No Title')
         event_description_for_tag_check = event_payload.get('description')
