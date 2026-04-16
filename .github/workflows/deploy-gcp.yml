@@ -25,12 +25,8 @@ jobs:
     - name: Configure Docker
       run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
-    - name: Create Secure .env File
+    - name: Write Secret Files
       env:
-        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        NBH_GDRIVE_FOLDER_ID: ${{ secrets.NBH_GDRIVE_FOLDER_ID }}
-        ADMIN_EMAIL_FOR_NOTIFICATIONS: ${{ secrets.ADMIN_EMAIL_FOR_NOTIFICATIONS }}
         CRED: ${{ secrets.GOOGLE_CREDENTIALS_JSON_CONTENT }}
         CAL: ${{ secrets.GOOGLE_TOKEN_CALENDAR_JSON }}
         GMAIL: ${{ secrets.GOOGLE_TOKEN_GMAIL_JSON }}
@@ -38,31 +34,12 @@ jobs:
         SHEETS: ${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}
         DOCS: ${{ secrets.GOOGLE_TOKEN_DOCS_JSON }}
       run: |
-        python -c '
-        import os, json
-        
-        def clean(val):
-            if not val: return ""
-            try:
-                # This flattens the JSON safely into a single line
-                return json.dumps(json.loads(val))
-            except:
-                return val.strip()
-
-        with open(".env", "w") as f:
-            f.write("GOOGLE_CLOUD_PROJECT=" + os.environ.get("GCP_PROJECT_ID", "") + "\n")
-            f.write("PUBSUB_TOPIC_ID=calendar-updates\n")
-            f.write("CI=true\n")
-            f.write("GEMINI_API_KEY=" + os.environ.get("GEMINI_API_KEY", "") + "\n")
-            f.write("NBH_GDRIVE_FOLDER_ID=" + os.environ.get("NBH_GDRIVE_FOLDER_ID", "") + "\n")
-            f.write("ADMIN_EMAIL_FOR_NOTIFICATIONS=" + os.environ.get("ADMIN_EMAIL_FOR_NOTIFICATIONS", "") + "\n")
-            f.write("GOOGLE_CREDENTIALS_JSON_CONTENT=" + clean(os.environ.get("CRED")) + "\n")
-            f.write("GOOGLE_TOKEN_JSON_CALENDAR=" + clean(os.environ.get("CAL")) + "\n")
-            f.write("GOOGLE_TOKEN_JSON_GMAIL=" + clean(os.environ.get("GMAIL")) + "\n")
-            f.write("GOOGLE_TOKEN_JSON_DRIVE=" + clean(os.environ.get("DRIVE")) + "\n")
-            f.write("GOOGLE_TOKEN_JSON_SHEETS=" + clean(os.environ.get("SHEETS")) + "\n")
-            f.write("GOOGLE_TOKEN_JSON_DOCS=" + clean(os.environ.get("DOCS")) + "\n")
-        '
+        cat <<< "$CRED" > credentials.json
+        cat <<< "$CAL" > calendar_token.json
+        cat <<< "$GMAIL" > gmail_token.json
+        cat <<< "$DRIVE" > drive_token.json
+        cat <<< "$SHEETS" > sheets_token.json
+        cat <<< "$DOCS" > docs_token.json
 
     - name: Build and Push Docker Image
       run: |
@@ -77,3 +54,16 @@ jobs:
         region: us-central1
         image: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bot-repo/nbh-bot:latest
         timeout: 3600
+        env_vars: |-
+          GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }}
+          PUBSUB_TOPIC_ID=calendar-updates
+          CI=false
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          NBH_GDRIVE_FOLDER_ID=${{ secrets.NBH_GDRIVE_FOLDER_ID }}
+          ADMIN_EMAIL_FOR_NOTIFICATIONS=${{ secrets.ADMIN_EMAIL_FOR_NOTIFICATIONS }}
+          CALENDAR_TOKEN=calendar_token.json
+          GMAIL_TOKEN=gmail_token.json
+          DRIVE_TOKEN=drive_token.json
+          SHEET_TOKEN=sheets_token.json
+          DOCS_TOKEN=docs_token.json
+          GOOGLE_CREDENTIALS_FILE=credentials.json
