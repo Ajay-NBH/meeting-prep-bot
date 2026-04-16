@@ -26,19 +26,42 @@ jobs:
       run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
     - name: Create Secure .env File
+      env:
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        NBH_GDRIVE_FOLDER_ID: ${{ secrets.NBH_GDRIVE_FOLDER_ID }}
+        ADMIN_EMAIL_FOR_NOTIFICATIONS: ${{ secrets.ADMIN_EMAIL_FOR_NOTIFICATIONS }}
+        CRED: ${{ secrets.GOOGLE_CREDENTIALS_JSON_CONTENT }}
+        CAL: ${{ secrets.GOOGLE_TOKEN_CALENDAR_JSON }}
+        GMAIL: ${{ secrets.GOOGLE_TOKEN_GMAIL_JSON }}
+        DRIVE: ${{ secrets.GOOGLE_TOKEN_DRIVE_JSON }}
+        SHEETS: ${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}
+        DOCS: ${{ secrets.GOOGLE_TOKEN_DOCS_JSON }}
       run: |
-        echo "GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }}" >> .env
-        echo "PUBSUB_TOPIC_ID=calendar-updates" >> .env
-        echo "CI=true" >> .env
-        echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
-        echo "NBH_GDRIVE_FOLDER_ID=${{ secrets.NBH_GDRIVE_FOLDER_ID }}" >> .env
-        echo "ADMIN_EMAIL_FOR_NOTIFICATIONS=${{ secrets.ADMIN_EMAIL_FOR_NOTIFICATIONS }}" >> .env
-        echo "GOOGLE_CREDENTIALS_JSON_CONTENT='${{ secrets.GOOGLE_CREDENTIALS_JSON_CONTENT }}'" >> .env
-        echo "GOOGLE_TOKEN_JSON_CALENDAR='${{ secrets.GOOGLE_TOKEN_CALENDAR_JSON }}'" >> .env
-        echo "GOOGLE_TOKEN_JSON_GMAIL='${{ secrets.GOOGLE_TOKEN_GMAIL_JSON }}'" >> .env
-        echo "GOOGLE_TOKEN_JSON_DRIVE='${{ secrets.GOOGLE_TOKEN_DRIVE_JSON }}'" >> .env
-        echo "GOOGLE_TOKEN_JSON_SHEETS='${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}'" >> .env
-        echo "GOOGLE_TOKEN_JSON_DOCS='${{ secrets.GOOGLE_TOKEN_DOCS_JSON }}'" >> .env
+        python -c '
+        import os, json
+        
+        def clean(val):
+            if not val: return ""
+            try:
+                return json.dumps(json.loads(val))
+            except:
+                return val.strip()
+
+        with open(".env", "w") as f:
+            f.write(f"GOOGLE_CLOUD_PROJECT={os.environ.get(\"GCP_PROJECT_ID\", \"\")}\n")
+            f.write("PUBSUB_TOPIC_ID=calendar-updates\n")
+            f.write("CI=true\n")
+            f.write(f"GEMINI_API_KEY={os.environ.get(\"GEMINI_API_KEY\", \"\")}\n")
+            f.write(f"NBH_GDRIVE_FOLDER_ID={os.environ.get(\"NBH_GDRIVE_FOLDER_ID\", \"\")}\n")
+            f.write(f"ADMIN_EMAIL_FOR_NOTIFICATIONS={os.environ.get(\"ADMIN_EMAIL_FOR_NOTIFICATIONS\", \"\")}\n")
+            f.write(f"GOOGLE_CREDENTIALS_JSON_CONTENT={clean(os.environ.get(\"CRED\"))}\n")
+            f.write(f"GOOGLE_TOKEN_JSON_CALENDAR={clean(os.environ.get(\"CAL\"))}\n")
+            f.write(f"GOOGLE_TOKEN_JSON_GMAIL={clean(os.environ.get(\"GMAIL\"))}\n")
+            f.write(f"GOOGLE_TOKEN_JSON_DRIVE={clean(os.environ.get(\"DRIVE\"))}\n")
+            f.write(f"GOOGLE_TOKEN_JSON_SHEETS={clean(os.environ.get(\"SHEETS\"))}\n")
+            f.write(f"GOOGLE_TOKEN_JSON_DOCS={clean(os.environ.get(\"DOCS\"))}\n")
+        '
 
     - name: Build and Push Docker Image
       run: |
