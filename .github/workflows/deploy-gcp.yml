@@ -31,6 +31,15 @@ jobs:
         docker build -t $IMAGE_NAME .
         docker push $IMAGE_NAME
 
+    - name: Flatten JSON Secrets
+      run: |
+        echo "FLAT_CRED=$(echo '${{ secrets.GOOGLE_CREDENTIALS_JSON_CONTENT }}' | tr -d '\n')" >> $GITHUB_ENV
+        echo "FLAT_CAL=$(echo '${{ secrets.GOOGLE_TOKEN_CALENDAR_JSON }}' | tr -d '\n')" >> $GITHUB_ENV
+        echo "FLAT_GMAIL=$(echo '${{ secrets.GOOGLE_TOKEN_GMAIL_JSON }}' | tr -d '\n')" >> $GITHUB_ENV
+        echo "FLAT_DRIVE=$(echo '${{ secrets.GOOGLE_TOKEN_DRIVE_JSON }}' | tr -d '\n')" >> $GITHUB_ENV
+        echo "FLAT_SHEETS=$(echo '${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}' | tr -d '\n')" >> $GITHUB_ENV
+        echo "FLAT_DOCS=$(echo '${{ secrets.GOOGLE_TOKEN_DOCS_JSON }}' | tr -d '\n')" >> $GITHUB_ENV
+
     - name: Deploy to Cloud Run
       uses: google-github-actions/deploy-cloudrun@v2
       with:
@@ -38,16 +47,16 @@ jobs:
         region: us-central1
         image: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bot-repo/nbh-bot:latest
         timeout: 3600
-        env_vars: |
+        env_vars: |-
           GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }}
           PUBSUB_TOPIC_ID=calendar-updates
           CI=true
           GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-          GOOGLE_CREDENTIALS_JSON_CONTENT=${{ secrets.GOOGLE_CREDENTIALS_JSON_CONTENT }}
-          GOOGLE_TOKEN_JSON_CALENDAR=${{ secrets.GOOGLE_TOKEN_CALENDAR_JSON }}
-          GOOGLE_TOKEN_JSON_GMAIL=${{ secrets.GOOGLE_TOKEN_GMAIL_JSON }}
-          GOOGLE_TOKEN_JSON_DRIVE=${{ secrets.GOOGLE_TOKEN_DRIVE_JSON }}
-          GOOGLE_TOKEN_JSON_SHEETS=${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}
-          GOOGLE_TOKEN_JSON_DOCS=${{ secrets.GOOGLE_TOKEN_DOCS_JSON }}
+          GOOGLE_CREDENTIALS_JSON_CONTENT=${{ env.FLAT_CRED }}
+          GOOGLE_TOKEN_JSON_CALENDAR=${{ env.FLAT_CAL }}
+          GOOGLE_TOKEN_JSON_GMAIL=${{ env.FLAT_GMAIL }}
+          GOOGLE_TOKEN_JSON_DRIVE=${{ env.FLAT_DRIVE }}
+          GOOGLE_TOKEN_JSON_SHEETS=${{ env.FLAT_SHEETS }}
+          GOOGLE_TOKEN_JSON_DOCS=${{ env.FLAT_DOCS }}
           NBH_GDRIVE_FOLDER_ID=${{ secrets.NBH_GDRIVE_FOLDER_ID }}
           ADMIN_EMAIL_FOR_NOTIFICATIONS=${{ secrets.ADMIN_EMAIL_FOR_NOTIFICATIONS }}
