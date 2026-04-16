@@ -1,0 +1,53 @@
+name: Deploy Real-Time Bot to GCP
+
+on:
+  push:
+    branches:
+      - main # Deploys automatically when you push to main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE_NAME=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bot-repo/nbh-bot:latest
+        docker build -t $IMAGE_NAME .
+        docker push $IMAGE_NAME
+
+    - name: Deploy to Cloud Run
+      uses: google-github-actions/deploy-cloudrun@v2
+      with:
+        service: nbh-meeting-bot
+        region: us-central1
+        image: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bot-repo/nbh-bot:latest
+        timeout: 3600
+        env_vars: |
+          GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }}
+          PUBSUB_TOPIC_ID=calendar-updates
+          CI=true
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_CREDENTIALS_JSON_CONTENT=${{ secrets.GOOGLE_CREDENTIALS_JSON_CONTENT }}
+          GOOGLE_TOKEN_JSON_CALENDAR=${{ secrets.GOOGLE_TOKEN_CALENDAR_JSON }}
+          GOOGLE_TOKEN_JSON_GMAIL=${{ secrets.GOOGLE_TOKEN_GMAIL_JSON }}
+          GOOGLE_TOKEN_JSON_DRIVE=${{ secrets.GOOGLE_TOKEN_DRIVE_JSON }}
+          GOOGLE_TOKEN_JSON_SHEETS=${{ secrets.GOOGLE_TOKEN_SHEETS_JSON }}
+          GOOGLE_TOKEN_JSON_DOCS=${{ secrets.GOOGLE_TOKEN_DOCS_JSON }}
+          NBH_GDRIVE_FOLDER_ID=${{ secrets.NBH_GDRIVE_FOLDER_ID }}
+          ADMIN_EMAIL_FOR_NOTIFICATIONS=${{ secrets.ADMIN_EMAIL_FOR_NOTIFICATIONS }}
