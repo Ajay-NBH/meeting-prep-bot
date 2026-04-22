@@ -1236,9 +1236,27 @@ def save_processed_event_id(event_id):
     with open(PROCESSED_EVENTS_FILE, 'a') as f: f.write(event_id + '\n')
 
 EVENT_TAG_PROCESSED = "[NBH_BRIEF_AGENT_PROCESSED_V1]"
+EVENT_TAG_ALERT_SENT = "[NBH_LEADERSHIP_ALERT_SENT]" # <--- Added new tag
 
 def is_event_already_tagged(event_description):
     return EVENT_TAG_PROCESSED in (event_description or "")
+
+def tag_event_alert_sent(calendar_service, event_id, calendar_id='primary'):
+    """Tags the calendar event immediately after a leadership alert is sent to prevent duplicates."""
+    if not calendar_service:
+        return
+    try:
+        event = calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
+        description = event.get('description', '')
+        if EVENT_TAG_ALERT_SENT not in description:
+            new_description = f"{description}\n\n{EVENT_TAG_ALERT_SENT}"
+            updated_event_body = {'description': new_description}
+            calendar_service.events().patch(
+                calendarId=calendar_id, eventId=event_id, body=updated_event_body
+            ).execute(num_retries=3)
+            print(f"  Tagged event {event_id} with LEADERSHIP_ALERT_SENT flag.")
+    except Exception as e:
+        print(f"  ⚠️ Network error tagging alert sent for event {event_id}: {e}")
 
 def tag_event_as_processed(calendar_service, event_id, calendar_id='primary'):
     if not calendar_service:
@@ -2300,86 +2318,98 @@ def main():
         upcoming_nbh_attendees_list = [att['name'] for att in meeting_data.get('nbh_attendees', [])]
         upcoming_nbh_attendees_str = ", ".join(upcoming_nbh_attendees_list) if upcoming_nbh_attendees_list else "N/A"
 
+        # Check if we already sent an alert for this specific event to prevent spam loops
+        already_alerted = EVENT_TAG_ALERT_SENT in (event_description_for_tag_check or "")
 
         # SCENARIO 1: "Hybrid" Engagement - A follow-up, but other separate threads also exist.
         if is_direct_follow_up and has_other_interactions:
-            print("DEBUG: HYBRID SCENARIO DETECTED. Sending nuanced leadership alert.")
-            
-            alert_subject = f"FYI: Complex Engagement with {current_brand_name_for_meeting} (Follow-up & Separate Threads)"
-            
-            alert_body_html = f"""
-            <html><head><style> body {{ font-family: Arial, sans-serif; }} li {{ margin-bottom: 8px; }} </style></head>
-            <body>
-                <p>Hello Leadership Team,</p>
-                <p>A new meeting has been scheduled with <b>{current_brand_name_for_meeting}</b>. This engagement is complex and requires coordination:</p>
-                <ul style="list-style-type:square;">
-                    <li>It appears to be a <b>direct follow-up</b> to some recent discussions.</li>
-                    <li>However, there are also <b>other, separate historical interactions</b> with this brand.</li>
-                </ul>
-                <p><b>Upcoming Meeting Details:</b></p>
-                <ul>
-                    <li><b>Title:</b> {upcoming_meeting_title}</li>
-                    <li><b>NBH Attendees:</b> {upcoming_nbh_attendees_str}</li>
-                </ul>
-                <p>This highlights a need for internal coordination. Context on the separate past interactions is below for awareness:</p>
-                <ul>
-            """
-            if condensed_meetings_for_alert:
-                for past_mtg in condensed_meetings_for_alert:
-                    alert_body_html += f"<li><b>{past_mtg['date']}:</b> {past_mtg['discussion_summary']} (NBH Team: {past_mtg['nbh_team']})</li>"
-            alert_body_html += "</ul><p>Best regards,<br>NBH Meeting Prep Agent</p></body></html>"
-            
-            # --- CORRECT EMAIL SENDING LOGIC ---
-            if gmail_service and leadership_emails:
-                email_message = create_email_message_with_image(
-                    sender=AGENT_EMAIL,
-                    to_emails_list=leadership_emails,
-                    subject=alert_subject,
-                    message_text_html=alert_body_html
-                )
-                send_gmail_message(gmail_service, 'me', email_message)
-                print(f"    Leadership alert for HYBRID scenario with {current_brand_name_for_meeting} sent.")
+            if already_alerted:
+                print("DEBUG: HYBRID SCENARIO DETECTED, but alert was already sent previously. Skipping duplicate email.")
             else:
-                print(f"    WARNING: Leadership alert for {current_brand_name_for_meeting} NOT sent (Gmail service or recipient list unavailable).")
+                print("DEBUG: HYBRID SCENARIO DETECTED. Sending nuanced leadership alert.")
+                
+                alert_subject = f"FYI: Complex Engagement with {current_brand_name_for_meeting} (Follow-up & Separate Threads)"
+                
+                alert_body_html = f"""
+                <html><head><style> body {{ font-family: Arial, sans-serif; }} li {{ margin-bottom: 8px; }} </style></head>
+                <body>
+                    <p>Hello Leadership Team,</p>
+                    <p>A new meeting has been scheduled with <b>{current_brand_name_for_meeting}</b>. This engagement is complex and requires coordination:</p>
+                    <ul style="list-style-type:square;">
+                        <li>It appears to be a <b>direct follow-up</b> to some recent discussions.</li>
+                        <li>However, there are also <b>other, separate historical interactions</b> with this brand.</li>
+                    </ul>
+                    <p><b>Upcoming Meeting Details:</b></p>
+                    <ul>
+                        <li><b>Title:</b> {upcoming_meeting_title}</li>
+                        <li><b>NBH Attendees:</b> {upcoming_nbh_attendees_str}</li>
+                    </ul>
+                    <p>This highlights a need for internal coordination. Context on the separate past interactions is below for awareness:</p>
+                    <ul>
+                """
+                if condensed_meetings_for_alert:
+                    for past_mtg in condensed_meetings_for_alert:
+                        alert_body_html += f"<li><b>{past_mtg['date']}:</b> {past_mtg['discussion_summary']} (NBH Team: {past_mtg['nbh_team']})</li>"
+                alert_body_html += "</ul><p>Best regards,<br>NBH Meeting Prep Agent</p></body></html>"
+                
+                # --- CORRECT EMAIL SENDING LOGIC ---
+                if gmail_service and leadership_emails:
+                    email_message = create_email_message_with_image(
+                        sender=AGENT_EMAIL,
+                        to_emails_list=leadership_emails,
+                        subject=alert_subject,
+                        message_text_html=alert_body_html
+                    )
+                    send_gmail_message(gmail_service, 'me', email_message)
+                    print(f"    Leadership alert for HYBRID scenario with {current_brand_name_for_meeting} sent.")
+                    # TAG IMMEDIATELY SO NEXT CRON JOB DOESN'T SPAM
+                    tag_event_alert_sent(calendar_service, event_id)
+                else:
+                    print(f"    WARNING: Leadership alert for {current_brand_name_for_meeting} NOT sent (Gmail service or recipient list unavailable).")
 
 
         # SCENARIO 2: "Purely Separate" Engagement - Not a follow-up, but other past interactions exist.
         elif has_other_interactions and not is_direct_follow_up:
-            print("DEBUG: PURELY SEPARATE THREAD DETECTED. Sending standard leadership alert.")
-            
-            alert_subject = f"FYI: New Meeting Scheduled with Existing Brand - {current_brand_name_for_meeting}"
-            
-            alert_body_html = f"""
-            <html><head><style> body {{ font-family: Arial, sans-serif; }} li {{ margin-bottom: 8px; }} </style></head>
-            <body>
-                <p>Hello Leadership Team,</p>
-                <p>A new meeting has been scheduled with <b>{current_brand_name_for_meeting}</b>. This meeting does <b>NOT</b> appear to be a direct follow-up to recent discussions.</p>
-                <p>This could indicate a new opportunity or a new NBH team engaging with the client.</p>
-                <p><b>Upcoming Meeting Details:</b></p>
-                <ul>
-                    <li><b>Title:</b> {upcoming_meeting_title}</li>
-                    <li><b>NBH Attendees:</b> {upcoming_nbh_attendees_str}</li>
-                </ul>
-                <p><b>Summary of Past Interactions (for context):</b></p>
-                <ul>
-            """
-            if condensed_meetings_for_alert:
-                for past_mtg in condensed_meetings_for_alert:
-                    alert_body_html += f"<li><b>{past_mtg['date']}:</b> {past_mtg['discussion_summary']} (NBH Team: {past_mtg['nbh_team']})</li>"
-            alert_body_html += "</ul><p>Best regards,<br>NBH Meeting Prep Agent</p></body></html>"
-            
-            # --- CORRECT EMAIL SENDING LOGIC ---
-            if gmail_service and leadership_emails:
-                email_message = create_email_message_with_image(
-                    sender=AGENT_EMAIL,
-                    to_emails_list=leadership_emails,
-                    subject=alert_subject,
-                    message_text_html=alert_body_html
-                )
-                send_gmail_message(gmail_service, 'me', email_message)
-                print(f"    Leadership alert for SEPARATE THREAD with {current_brand_name_for_meeting} sent.")
+            if already_alerted:
+                print("DEBUG: PURELY SEPARATE THREAD DETECTED, but alert was already sent previously. Skipping duplicate email.")
             else:
-                print(f"    WARNING: Leadership alert for {current_brand_name_for_meeting} NOT sent (Gmail service or recipient list unavailable).")
+                print("DEBUG: PURELY SEPARATE THREAD DETECTED. Sending standard leadership alert.")
+                
+                alert_subject = f"FYI: New Meeting Scheduled with Existing Brand - {current_brand_name_for_meeting}"
+                
+                alert_body_html = f"""
+                <html><head><style> body {{ font-family: Arial, sans-serif; }} li {{ margin-bottom: 8px; }} </style></head>
+                <body>
+                    <p>Hello Leadership Team,</p>
+                    <p>A new meeting has been scheduled with <b>{current_brand_name_for_meeting}</b>. This meeting does <b>NOT</b> appear to be a direct follow-up to recent discussions.</p>
+                    <p>This could indicate a new opportunity or a new NBH team engaging with the client.</p>
+                    <p><b>Upcoming Meeting Details:</b></p>
+                    <ul>
+                        <li><b>Title:</b> {upcoming_meeting_title}</li>
+                        <li><b>NBH Attendees:</b> {upcoming_nbh_attendees_str}</li>
+                    </ul>
+                    <p><b>Summary of Past Interactions (for context):</b></p>
+                    <ul>
+                """
+                if condensed_meetings_for_alert:
+                    for past_mtg in condensed_meetings_for_alert:
+                        alert_body_html += f"<li><b>{past_mtg['date']}:</b> {past_mtg['discussion_summary']} (NBH Team: {past_mtg['nbh_team']})</li>"
+                alert_body_html += "</ul><p>Best regards,<br>NBH Meeting Prep Agent</p></body></html>"
+                
+                # --- CORRECT EMAIL SENDING LOGIC ---
+                if gmail_service and leadership_emails:
+                    email_message = create_email_message_with_image(
+                        sender=AGENT_EMAIL,
+                        to_emails_list=leadership_emails,
+                        subject=alert_subject,
+                        message_text_html=alert_body_html
+                    )
+                    send_gmail_message(gmail_service, 'me', email_message)
+                    print(f"    Leadership alert for SEPARATE THREAD with {current_brand_name_for_meeting} sent.")
+                    # TAG IMMEDIATELY SO NEXT CRON JOB DOESN'T SPAM
+                    tag_event_alert_sent(calendar_service, event_id)
+                else:
+                    print(f"    WARNING: Leadership alert for {current_brand_name_for_meeting} NOT sent (Gmail service or recipient list unavailable).")
 
         else:
             # This covers the "clean" cases: a brand-new meeting or a simple follow-up with no other threads.
