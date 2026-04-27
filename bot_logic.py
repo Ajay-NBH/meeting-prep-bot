@@ -1146,18 +1146,27 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
 
         if FILE_NAME_NBH_PREVIOUS_MEETINGS_GSHEET.lower() in fname.lower(): continue
 
+        # --- SMART CACHE IMPLEMENTATION ---
+        def get_cached_content():
+            if fid not in GDRIVE_FILE_CACHE:
+                print(f"    📥 Downloading {fname} from Drive (First time this run)...")
+                GDRIVE_FILE_CACHE[fid] = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
+            else:
+                print(f"    ⚡ Using cached data for {fname}...")
+            return GDRIVE_FILE_CACHE[fid]
+
         if FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
-            content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
+            content = get_cached_content()
             extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords)
             if extracted_rows: data_buckets["physical_campaigns"].extend(extracted_rows)
 
         elif FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
-            content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
+            content = get_cached_content()
             extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords)
             if extracted_rows: data_buckets["digital_campaigns"].extend(extracted_rows)
 
         elif FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in fname.lower():
-             content = get_structured_gdrive_file_data(drive_service, sheets_service, fid, fname, mtype)
+             content = get_cached_content()
              extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords)
              if extracted_rows: data_buckets["case_studies"].extend(extracted_rows)
 
@@ -1237,9 +1246,30 @@ def save_processed_event_id(event_id):
 
 EVENT_TAG_PROCESSED = "[NBH_BRIEF_AGENT_PROCESSED_V1]"
 EVENT_TAG_ALERT_SENT = "[NBH_LEADERSHIP_ALERT_SENT]" # <--- Added new tag
+EVENT_TAG_PROCESSING = "[NBH_PROCESSING_IN_PROGRESS]" # <--- NEW CONCURRENCY LOCK
+
+# --- GLOBAL CACHE FOR GDRIVE FILES ---
+# Prevents downloading massive sheets multiple times per run
+GDRIVE_FILE_CACHE = {}
 
 def is_event_already_tagged(event_description):
-    return EVENT_TAG_PROCESSED in (event_description or "")
+    desc = event_description or ""
+    return EVENT_TAG_PROCESSED in desc or EVENT_TAG_PROCESSING in desc
+
+def tag_event_as_processing(calendar_service, event_id, calendar_id='primary'):
+    """Immediately locks the event so concurrent bot runs don't process it simultaneously."""
+    if not calendar_service: return
+    try:
+        event = calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
+        description = event.get('description', '')
+        if EVENT_TAG_PROCESSING not in description and EVENT_TAG_PROCESSED not in description:
+            new_description = f"{description}\n\n{EVENT_TAG_PROCESSING}"
+            calendar_service.events().patch(
+                calendarId=calendar_id, eventId=event_id, body={'description': new_description}
+            ).execute(num_retries=3)
+            print(f"  🔒 Locked event {event_id} (Marked as Processing).")
+    except Exception as e:
+        print(f"  ⚠️ Network error locking event {event_id}: {e}")
 
 def tag_event_alert_sent(calendar_service, event_id, calendar_id='primary'):
     """Tags the calendar event immediately after a leadership alert is sent to prevent duplicates."""
@@ -1263,16 +1293,19 @@ def tag_event_as_processed(calendar_service, event_id, calendar_id='primary'):
         print("  Calendar service not available to tag event.")
         return
     try:
-        # ADDED num_retries=3 to auto-reconnect if connection dropped
         event = calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
         description = event.get('description', '')
-        if not is_event_already_tagged(description):
-            new_description = f"{description}\n\n{EVENT_TAG_PROCESSED}"
+        
+        # Remove the "Processing" lock and add the "Processed" tag
+        clean_description = description.replace(f"\n\n{EVENT_TAG_PROCESSING}", "").replace(EVENT_TAG_PROCESSING, "")
+        
+        if EVENT_TAG_PROCESSED not in clean_description:
+            new_description = f"{clean_description}\n\n{EVENT_TAG_PROCESSED}"
             updated_event_body = {'description': new_description}
             calendar_service.events().patch(
                 calendarId=calendar_id, eventId=event_id, body=updated_event_body
             ).execute(num_retries=3)
-            print(f"  Tagged event {event_id} as processed in calendar.")
+            print(f"  ✅ Tagged event {event_id} as fully processed in calendar.")
     except HttpError as error:
         print(f"  An HTTP error occurred tagging event {event_id}: {error}")
     except Exception as e:
@@ -2116,14 +2149,17 @@ def main():
 
         print(f"\nProcessing event: '{event_summary}' (ID: {event_id})")
 
-        # Step 1: Check if the event has already been processed
+        # Step 1: Check if the event has already been processed or is currently being processed
         if is_event_already_tagged(event_description_for_tag_check):
-            print(f"  Skipping event '{event_summary}': Already tagged as processed.")
+            print(f"  Skipping event '{event_summary}': Already tagged as processed or currently processing.")
             continue
         
         if event_id in processed_ids_local_file:
             print(f"  Skipping event '{event_summary}': Found in local processed file.")
             continue
+
+        # 🚀 CRITICAL FIX: Lock the event immediately so concurrent Webhooks don't duplicate work
+        tag_event_as_processing(calendar_service, event_id)
 
         # Step 2: Extract basic meeting info (attendees, raw title, etc.)
         meeting_data_result = extract_meeting_info(event_payload, AGENT_EMAIL, NBH_SERVICE_ACCOUNTS_TO_EXCLUDE)
@@ -2156,9 +2192,9 @@ def main():
         except Exception as e:
             print(f"  CRITICAL API ERROR for '{meeting_data['title']}': {e}")
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                print("  ⚠️ Quota Exceeded. Pausing script for 60 seconds before trying NEXT meeting...")
-                time.sleep(60)
-                # Skip this meeting, try the next one
+                print("  ⚠️ Quota Exceeded. Pausing briefly (5s) to let API recover...")
+                time.sleep(5)
+                # Skip this meeting, try the next one (it remains locked as processing, will be retried later if lock cleared manually, or we can just let it fail and remove lock)
                 continue
             else:
                 # If it's another error, try to continue with unknown brand
