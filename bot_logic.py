@@ -2132,7 +2132,14 @@ def main():
     pre_meeting_brief = "Pre_meeting_brief"
     rng = f"{pre_meeting_brief}!A2:A2"
     pre_meeting_brief_prompt = read_data_from_sheets(prompts_sheet_id, sheets_service, rng)
-    YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI = pre_meeting_brief_prompt[0][0]
+    
+    # --- SAFETY NET FOR GOOGLE SHEETS API GLITCHES ---
+    if pre_meeting_brief_prompt and len(pre_meeting_brief_prompt) > 0 and len(pre_meeting_brief_prompt[0]) > 0:
+        YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI = pre_meeting_brief_prompt[0][0]
+    else:
+        print("CRITICAL ERROR: Could not fetch the Prompt Template from Google Sheets (API Glitch).")
+        print("Exiting safely. Cloud Scheduler will retry on the next run.")
+        return # Exits the script gracefully instead of crashing
 
 
     if not calendar_service: # Critical service
