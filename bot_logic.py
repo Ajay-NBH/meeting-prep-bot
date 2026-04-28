@@ -1245,8 +1245,7 @@ def save_processed_event_id(event_id):
     with open(PROCESSED_EVENTS_FILE, 'a') as f: f.write(event_id + '\n')
 
 EVENT_TAG_PROCESSED = "[NBH_BRIEF_AGENT_PROCESSED_V1]"
-EVENT_TAG_ALERT_SENT = "[NBH_LEADERSHIP_ALERT_SENT]" # <--- Added new tag
-EVENT_TAG_PROCESSING = "[NBH_PROCESSING_IN_PROGRESS]" # <--- NEW CONCURRENCY LOCK
+EVENT_TAG_ALERT_SENT = "[NBH_LEADERSHIP_ALERT_SENT]" 
 
 # --- GLOBAL CACHE FOR GDRIVE FILES ---
 # Prevents downloading massive sheets multiple times per run
@@ -1254,27 +1253,54 @@ GDRIVE_FILE_CACHE = {}
 
 def is_event_already_tagged(event_description):
     desc = event_description or ""
-    return EVENT_TAG_PROCESSED in desc or EVENT_TAG_PROCESSING in desc
+    
+    # 1. If it's fully processed, skip it safely
+    if EVENT_TAG_PROCESSED in desc:
+        return True
+        
+    # 2. Check for our NEW timestamped lock
+    lock_match = re.search(r'\[NBH_PROCESSING_IN_PROGRESS_(\d+)\]', desc)
+    if lock_match:
+        lock_time = int(lock_match.group(1))
+        current_time = int(time.time())
+        # If lock is older than 20 minutes (1200 seconds), the previous run crashed. Override it.
+        if current_time - lock_time > 1200:
+            print("  ⚠️ Found STALE lock from a crashed run. Overriding...")
+            return False
+        else:
+            return True # Still locked by an active, healthy run
+            
+    # 3. FIX FOR YOUR CURRENT BUG: If the old string-based lock is found, override it!
+    if "[NBH_PROCESSING_IN_PROGRESS]" in desc:
+        print("  ⚠️ Found OLD stuck lock from yesterday. Overriding...")
+        return False
+
+    return False
 
 def tag_event_as_processing(calendar_service, event_id, calendar_id='primary'):
-    """Immediately locks the event so concurrent bot runs don't process it simultaneously."""
+    """Locks the event with a timestamp so we can detect crashes later."""
     if not calendar_service: return
     try:
         event = calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
         description = event.get('description', '')
-        if EVENT_TAG_PROCESSING not in description and EVENT_TAG_PROCESSED not in description:
-            new_description = f"{description}\n\n{EVENT_TAG_PROCESSING}"
-            calendar_service.events().patch(
-                calendarId=calendar_id, eventId=event_id, body={'description': new_description}
-            ).execute(num_retries=3)
-            print(f"  🔒 Locked event {event_id} (Marked as Processing).")
+        
+        current_time = int(time.time())
+        new_lock_tag = f"[NBH_PROCESSING_IN_PROGRESS_{current_time}]"
+        
+        # Clean up any old or stuck locks first
+        clean_desc = re.sub(r'\[NBH_PROCESSING_IN_PROGRESS.*?\]', '', description).strip()
+        
+        new_description = f"{clean_desc}\n\n{new_lock_tag}"
+        calendar_service.events().patch(
+            calendarId=calendar_id, eventId=event_id, body={'description': new_description}
+        ).execute(num_retries=3)
+        print(f"  🔒 Locked event {event_id} (Timestamp: {current_time}).")
     except Exception as e:
         print(f"  ⚠️ Network error locking event {event_id}: {e}")
 
 def tag_event_alert_sent(calendar_service, event_id, calendar_id='primary'):
     """Tags the calendar event immediately after a leadership alert is sent to prevent duplicates."""
-    if not calendar_service:
-        return
+    if not calendar_service: return
     try:
         event = calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
         description = event.get('description', '')
@@ -1289,27 +1315,21 @@ def tag_event_alert_sent(calendar_service, event_id, calendar_id='primary'):
         print(f"  ⚠️ Network error tagging alert sent for event {event_id}: {e}")
 
 def tag_event_as_processed(calendar_service, event_id, calendar_id='primary'):
-    if not calendar_service:
-        print("  Calendar service not available to tag event.")
-        return
+    if not calendar_service: return
     try:
         event = calendar_service.events().get(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
         description = event.get('description', '')
         
-        # Remove the "Processing" lock and add the "Processed" tag
-        clean_description = description.replace(f"\n\n{EVENT_TAG_PROCESSING}", "").replace(EVENT_TAG_PROCESSING, "")
+        # Remove ANY processing lock (old text or new timestamped)
+        clean_desc = re.sub(r'\[NBH_PROCESSING_IN_PROGRESS.*?\]', '', description).strip()
         
-        if EVENT_TAG_PROCESSED not in clean_description:
-            new_description = f"{clean_description}\n\n{EVENT_TAG_PROCESSED}"
-            updated_event_body = {'description': new_description}
+        if EVENT_TAG_PROCESSED not in clean_desc:
+            new_description = f"{clean_desc}\n\n{EVENT_TAG_PROCESSED}"
             calendar_service.events().patch(
-                calendarId=calendar_id, eventId=event_id, body=updated_event_body
+                calendarId=calendar_id, eventId=event_id, body={'description': new_description}
             ).execute(num_retries=3)
             print(f"  ✅ Tagged event {event_id} as fully processed in calendar.")
-    except HttpError as error:
-        print(f"  An HTTP error occurred tagging event {event_id}: {error}")
     except Exception as e:
-        # SAFETY NET: Prevents crash if connection drops
         print(f"  ⚠️ Network error tagging event {event_id} (Ignored to prevent crash): {e}")
 
 EVENT_REMINDER_SET_TAG = "[NBH_1HR_REMINDER_SET]"
@@ -2134,6 +2154,9 @@ def main():
         print("No new meetings to update in master sheet.")
     else:
         print(f"{len(events_to_update_list)} new meetings found")
+        # ADDED BATCH LIMIT TO PREVENT CLOUD RUN TIMEOUT
+        events_to_update_list = events_to_update_list[:5] 
+        print(f"Limiting to 5 Master Sheet updates this run to prevent timeouts.")
         update_events_in_sheets(master_sheet_id, events_to_update_list, sheets_service, NBH_SERVICE_ACCOUNTS_TO_EXCLUDE, designations)
     
 
@@ -2141,8 +2164,17 @@ def main():
 
     processed_ids_local_file = load_processed_event_ids()
 
+    # ADDED BATCH LIMIT VARIABLES
+    MAX_BRIEFS_PER_RUN = 3
+    briefs_generated_this_run = 0
+
     for event_payload in upcoming_events:
-        
+        # CHECK BATCH LIMIT
+        if briefs_generated_this_run >= MAX_BRIEFS_PER_RUN:
+            print(f"\n⏸️ Reached limit of {MAX_BRIEFS_PER_RUN} briefs for this execution.")
+            print("Stopping to prevent Cloud Run timeout. Will process the rest on the next trigger.")
+            break
+            
         event_id = event_payload['id']
         event_summary = event_payload.get('summary', 'No Title')
         event_description_for_tag_check = event_payload.get('description')
@@ -2571,6 +2603,9 @@ def main():
                     print(f"  Error updating master sheet with Google Doc link for event ID '{event_id}': {error}")
                 # If we have an alternate sheet, update it too
                 print(f"  Google Doc created and content written for '{meeting_data['title']}'.")
+            
+            # INCREMENT COUNTER AFTER SUCCESSFUL GENERATION
+            briefs_generated_this_run += 1
             
         
 
