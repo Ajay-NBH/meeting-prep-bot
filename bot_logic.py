@@ -908,52 +908,74 @@ def summarize_file_content_with_gemini(gemini_llm_client, file_name, mime_type, 
 # ==============================================================================
 # STRICT EXACT MATCH HELPER: Deep Scan for 2025/2026 Data
 # ==============================================================================
-def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean, strict_keywords, sub_category_keywords=None):
+def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean, strict_keywords, sub_category_keywords=None, target_cities=None, email_to_city_map=None):
     """
     Scans sheet from BOTTOM (Newest) to TOP (Oldest).
     Filters ONLY for 2025 and 2026 executed data.
-    Pulls a massive chunk of data so the AI can smartly filter the exact products.
+    Prioritizes campaigns/case studies executed in the SAME CITY as the NBH attendees.
     """
-    if sub_category_keywords is None:
-        sub_category_keywords = []
+    if sub_category_keywords is None: sub_category_keywords = []
+    if target_cities is None: target_cities = set()
+    if email_to_city_map is None: email_to_city_map = {}
 
-    matches_brand = []
-    matches_sub_category =[]
-    matches_strict =[]
+    # Separate buckets for Same City vs Other Cities
+    matches_brand_city, matches_brand_other = [], []
+    matches_sub_category_city, matches_sub_category_other = [], []
+    matches_strict_city, matches_strict_other = [], []
     
     if not isinstance(file_data_obj, list) or not file_data_obj: 
-        return[]
+        return []
     
     # Detect Columns
-    header_vals = file_data_obj[0].get("header",[]) if isinstance(file_data_obj[0], dict) else[]
-    brand_col, ind_col, date_col = -1, -1, -1
+    header_vals = file_data_obj[0].get("header",[]) if isinstance(file_data_obj[0], dict) else []
+    brand_col, ind_col, date_col, city_col, email_col = -1, -1, -1, -1, -1
 
     if header_vals:
-        lower_h =[str(h).strip().lower() for h in header_vals]
+        lower_h = [str(h).strip().lower() for h in header_vals]
         for idx, h in enumerate(lower_h):
             if "brand" in h: brand_col = idx
-            if any(x in h for x in["industry", "category", "vertical"]): ind_col = idx
-            if any(x in h for x in["year", "date", "timestamp", "tentative"]): date_col = idx
+            if any(x in h for x in ["industry", "category", "vertical"]): ind_col = idx
+            if any(x in h for x in ["year", "date", "timestamp", "tentative"]): date_col = idx
+            if "city" in h: city_col = idx
+            if "email" in h: email_col = idx
 
-    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else[]
+    data_rows = file_data_obj[1:] if len(file_data_obj) > 1 else []
     if not data_rows: return []
 
-    valid_sub_kws =[k.strip().lower() for k in sub_category_keywords if k and len(k.strip()) > 2]
-    valid_industry_kws =[k.strip().lower() for k in strict_keywords if k and len(k.strip()) > 2]
+    valid_sub_kws = [k.strip().lower() for k in sub_category_keywords if k and len(k.strip()) > 2]
+    valid_industry_kws = [k.strip().lower() for k in strict_keywords if k and len(k.strip()) > 2]
 
     # Iterate Newest First (Bottom -> Top)
     for row_info in reversed(data_rows):
-        vals = row_info.get('values',[])
+        vals = row_info.get('values', [])
         if not vals: continue
         
         row_brand = str(vals[brand_col]).strip().lower() if brand_col != -1 and len(vals) > brand_col else ""
         row_ind = str(vals[ind_col]).strip().lower() if ind_col != -1 and len(vals) > ind_col else ""
         
         # 🛑 GARBAGE FILTER: Skip completely empty/unknown brand rows
-        if not row_brand or row_brand in['nan', 'none', '', 'n/a', 'unknown']:
+        if not row_brand or row_brand in ['nan', 'none', '', 'n/a', 'unknown']:
             continue
 
-        row_items =[]
+        # --- NEW CITY EXTRACTION LOGIC ---
+        row_city_match = False
+        row_city_raw = ""
+        
+        # 1. Try to get City directly from a "City" column (e.g., Case Studies or Physical Campaigns)
+        if city_col != -1 and len(vals) > city_col:
+            row_city_raw = str(vals[city_col]).strip().lower()
+        
+        # 2. If no explicit city, lookup the Email in our Hierarchy mapping (e.g., Digital Campaigns)
+        if not row_city_raw and email_col != -1 and len(vals) > email_col:
+            row_email = str(vals[email_col]).strip().lower()
+            row_city_raw = email_to_city_map.get(row_email, "")
+            
+        # 3. Check if the row's city matches any of the attendees' cities
+        if target_cities and row_city_raw:
+            if any(tc in row_city_raw for tc in target_cities):
+                row_city_match = True
+
+        row_items = []
         for i in range(len(header_vals)):
             if i < len(vals):
                 val = str(vals[i]).strip()
@@ -970,36 +992,51 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         # Priority 1: Exact Brand Match
         if brand_clean and len(brand_clean) > 2 and row_brand and len(row_brand) > 2:
             if (brand_clean in row_brand) or (row_brand in brand_clean):
-                if len(matches_brand) < 20: 
-                    matches_brand.append(entry)
+                if row_city_match and len(matches_brand_city) < 10:
+                    matches_brand_city.append(entry)
+                elif not row_city_match and len(matches_brand_other) < 10: 
+                    matches_brand_other.append(entry)
                 continue 
         
-        # Priority 2: Sub-Category / Competitor Match (Searches entire row)
+        # Priority 2: Sub-Category / Competitor Match
         entry_lower = entry.lower()
         is_sub_match = False
         if valid_sub_kws and any(k in entry_lower for k in valid_sub_kws):
             is_sub_match = True
                     
-        if is_sub_match and len(matches_sub_category) < 100: 
-            matches_sub_category.append(entry)
+        if is_sub_match:
+            if row_city_match and len(matches_sub_category_city) < 30:
+                matches_sub_category_city.append(entry)
+            elif not row_city_match and len(matches_sub_category_other) < 30:
+                matches_sub_category_other.append(entry)
             continue
             
         # Priority 3: Broad Industry Match 
-        # (Massive limit of 400 guarantees it reaches the Jan 2026 / Dec 2025 data!)
         if valid_industry_kws:
             if (ind_col != -1 and row_ind and any(k in row_ind for k in valid_industry_kws)) or \
                (brand_col != -1 and row_brand and any(k in row_brand for k in valid_industry_kws)):
-                if len(matches_strict) < 400: 
-                    matches_strict.append(entry)
+                if row_city_match and len(matches_strict_city) < 50:
+                    matches_strict_city.append(entry)
+                elif not row_city_match and len(matches_strict_other) < 50: 
+                    matches_strict_other.append(entry)
 
-    # Return Logic: Combine the massive lists to give Gemini the full picture
-    final_output =[]
-    if matches_brand:
-        final_output += ["**Exact Brand Matches Found:**"] + matches_brand
-    if matches_sub_category:
-        final_output += ["**Highly Relevant (Competitor/Sub-Category) Campaigns:**"] + matches_sub_category
-    if matches_strict:
-        final_output +=["**Other Industry Campaigns (2025-2026):**"] + matches_strict
+    # Return Logic: Prioritize Same-City matches to the top of the list for the LLM
+    final_output = []
+    
+    if matches_brand_city or matches_brand_other:
+        final_output.append("**Exact Brand Matches Found:**")
+        if matches_brand_city: final_output += [m + " [📍 SAME CITY MATCH]" for m in matches_brand_city]
+        if matches_brand_other: final_output += matches_brand_other
+        
+    if matches_sub_category_city or matches_sub_category_other:
+        final_output.append("**Highly Relevant (Competitor/Sub-Category) Campaigns:**")
+        if matches_sub_category_city: final_output += [m + " [📍 SAME CITY MATCH]" for m in matches_sub_category_city]
+        if matches_sub_category_other: final_output += matches_sub_category_other
+        
+    if matches_strict_city or matches_strict_other:
+        final_output.append("**Other Industry Campaigns (2025-2026):**")
+        if matches_strict_city: final_output += [m + " [📍 SAME CITY MATCH]" for m in matches_strict_city]
+        if matches_strict_other: final_output += matches_strict_other
     
     return final_output
 
@@ -1008,9 +1045,19 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
 # ==============================================================================
 def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_client, 
                                     current_target_brand_name, target_brand_industry, current_meeting_data, 
-                                    EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL, master_sheet_id):
+                                    EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP, AGENT_EMAIL, master_sheet_id, email_to_city_map=None):
+    
+    if email_to_city_map is None: email_to_city_map = {}
     
     print(f"Fetching and processing internal NBH data for target brand '{current_target_brand_name}'...")
+    
+    # NEW: Determine Target Cities for Attendees
+    target_cities = set()
+    for att in current_meeting_data.get('nbh_attendees', []):
+        att_email = att.get('email', '').lower()
+        if att_email in email_to_city_map and email_to_city_map[att_email]:
+            target_cities.add(email_to_city_map[att_email])
+    print(f"    🎯 Target Cities for Attendees: {target_cities if target_cities else 'None Found'}")
     
     history_context_str = ""
     data_buckets = {"physical_campaigns": [], "digital_campaigns": [], "case_studies":[], "general_docs":[]}
@@ -1052,24 +1099,20 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
             found_meetings =[]
             target_clean = current_target_brand_name.lower().strip()
             
-            # ---> FIX 1: Get current meeting ID to prevent self-matching
             current_meeting_id = current_meeting_data.get('id', '')
 
             for row in data_rows:
                 if len(row) <= col_brand: continue
                 
-                # ---> FIX 1: Skip the row if it's the exact same meeting we are currently processing
                 row_meeting_id = str(row[0]).strip() if len(row) > 0 else ""
                 if row_meeting_id and row_meeting_id == current_meeting_id:
                     continue
 
                 sheet_brand = str(row[col_brand]).strip().lower()
                 
-                # ---> FIX 2: Prevent empty string bugs and skip 'unknown' 
                 if not sheet_brand or sheet_brand == 'unknown' or not target_clean or target_clean == 'unknown':
                     continue
                 
-                # --- NEW EXACT BRAND MATCHING LOGIC (For Escalation Alerts Only) ---
                 if is_brand_match(target_clean, sheet_brand):
                     row_date_str = str(row[col_date]) if len(row) > col_date else ""
                     prev_nbh_raw = str(row[col_nbh_attendees]).lower() if len(row) > col_nbh_attendees else ""
@@ -1097,7 +1140,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
     except Exception as e:
         print(f"    Error reading Master Sheet: {e}")
         history_context_str = "## PREVIOUS MEETING INTELLIGENCE: Data access error.\n"
-
 
     # --- 2. EXACT INDUSTRY MAPPING (Strict Matching Only) ---
     STRICT_INDUSTRY_MAP = {
@@ -1131,7 +1173,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
     strict_keywords = STRICT_INDUSTRY_MAP.get(target_brand_industry, [target_brand_industry.lower()])
     target_brand_clean = current_target_brand_name.lower().strip()
     
-    # NEW: Extract the sub-category keywords generated by the LLM
     sub_category_keywords = current_meeting_data.get('sub_category_keywords',[])
 
     print(f"    Searching Campaigns/Case Studies for STRICT MATCH ONLY: Brand='{target_brand_clean}' OR Industry='{strict_keywords[:2]}'")
@@ -1146,7 +1187,6 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
 
         if FILE_NAME_NBH_PREVIOUS_MEETINGS_GSHEET.lower() in fname.lower(): continue
 
-        # --- SMART CACHE IMPLEMENTATION ---
         def get_cached_content():
             if fid not in GDRIVE_FILE_CACHE:
                 print(f"    📥 Downloading {fname} from Drive (First time this run)...")
@@ -1157,20 +1197,18 @@ def get_internal_nbh_data_for_brand(drive_service, sheets_service, gemini_llm_cl
 
         if FILE_NAME_PHYSICAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
             content = get_cached_content()
-            extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords)
+            extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords, target_cities, email_to_city_map)
             if extracted_rows: data_buckets["physical_campaigns"].extend(extracted_rows)
 
         elif FILE_NAME_DIGITAL_CAMPAIGNS_GSHEET.lower() in fname.lower():
             content = get_cached_content()
-            extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords)
+            extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords, target_cities, email_to_city_map)
             if extracted_rows: data_buckets["digital_campaigns"].extend(extracted_rows)
 
         elif FILE_NAME_LATEST_CASE_STUDIES_GSHEET.lower() in fname.lower():
              content = get_cached_content()
-             extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords)
+             extracted_rows = extract_strict_campaigns_and_case_studies(content, fname, target_brand_clean, strict_keywords, sub_category_keywords, target_cities, email_to_city_map)
              if extracted_rows: data_buckets["case_studies"].extend(extracted_rows)
-
-        # FIX: Removed the PDF parsing block entirely to prevent LLM context pollution and hallucinations.
 
     # --- 4. FINAL STRING ASSEMBLY (Formatting for Prompt) ---
     campaigns_str = "## NBH CAMPAIGN EXAMPLES (From Live Sheets)\n"
@@ -2110,14 +2148,20 @@ def main():
     hcy_data = read_data_from_sheets(hcy_sheet_id, sheets_service, "Sheet4!A:F")
     df_hcy = pd.DataFrame(hcy_data[1:], columns=hcy_data[0])
 
-    # Constructing designations dictionary
-    # This will map employee emails to their designations
+    # Constructing designations and City mapping dictionary
     designations = {}
+    email_to_city_map = {}
 
     for i, row in df_hcy.iterrows():
-        employee = row["Official Email ID"]
-        dg = row["Designation New"]
-        designations[employee] = dg
+        employee = str(row.get("Official Email ID", "")).strip().lower()
+        dg = row.get("Designation New", "")
+        location = str(row.get("Location", "")).strip().lower()
+        
+        if employee and employee != 'nan':
+            designations[employee] = dg
+            # Extract city from formats like "Pune-regional", "Mumbai-national"
+            city = location.split('-')[0].strip() if '-' in location else location
+            email_to_city_map[employee] = city
 
     # Fetching column headers for master sheet and audit sheet
     master_sheet_columns = read_data_from_sheets(master_sheet_id, sheets_service,  "Meeting_data!A1:BZ1")[0]  # Get the header row
@@ -2359,7 +2403,8 @@ def main():
                 current_meeting_data=meeting_data,
                 EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP=EXCLUDED_NBH_PSEUDO_NAMES_FOR_FOLLOWUP,
                 AGENT_EMAIL=AGENT_EMAIL,
-                master_sheet_id=master_sheet_id 
+                master_sheet_id=master_sheet_id,
+                email_to_city_map=email_to_city_map # NEW PARAMETER
             )
         else:
             # If services are NOT available, create the default/fallback structure.
