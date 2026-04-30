@@ -1951,7 +1951,7 @@ def events_to_update(meeting_ids, events):
         return events_to_update
     
 
-def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded_emails, designations):
+def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded_emails, designations, email_to_geo_map, column_index_master):
     import re
     import time
     
@@ -1970,6 +1970,10 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
     for i, event in enumerate(events_to_update):
         id = event["id"]
         title = event.get("summary", "Untitled Meeting")
+        
+        # --- NEW: Extract Organizer Email ---
+        organizer_email = event.get("organizer", {}).get("email", "")
+        
         date = event["start"].get("date", event["start"].get("dateTime"))
         if 'T' in date:
             date = datetime.datetime.fromisoformat(date).date().isoformat()
@@ -1994,6 +1998,23 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
         for email in nobroker_attendee:
             owner, _ = get_sheet_owner_from_email(email)
             if owner: break
+            
+        # --- NEW: CALCULATE DEPT (Brand Size) AND CITY ---
+        found_dept = ""
+        found_city = ""
+        for email in nobroker_attendee:
+            clean_email = email.lower()
+            if clean_email in email_to_geo_map:
+                raw_dept = email_to_geo_map[clean_email].get('dept', '')
+                
+                # Clean Dept logic from your separate script
+                if 'regional' in raw_dept.lower(): found_dept = 'Regional'
+                elif 'national' in raw_dept.lower(): found_dept = 'National'
+                elif 'execution' in raw_dept.lower(): continue
+                else: found_dept = raw_dept
+                
+                found_city = email_to_geo_map[clean_email].get('city', '').title()
+                break # Stop after finding the first valid match
         
         # --- CALCULATE MAIN PARTICIPANT ---
         main_participant = []
@@ -2036,6 +2057,18 @@ def update_events_in_sheets(sheet_id, events_to_update, sheets_service, excluded
                     if owner:
                         update_payloads.append({"range": f"{tab_name}!{owner_col_master}{exact_row}:{owner_update_col_master}{exact_row}", "values": [[owner, "TRUE"]]})
                     update_payloads.append({"range": f"{tab_name}!{main_part_col}{exact_row}:{meeting_done_col}{exact_row}", "values": [participant_data]})
+                    
+                    # --- NEW: PUSH DEPT, CITY, AND ORGANIZER TO MASTER SHEET ---
+                    col_brand_size = column_index_master.get('Brand Size', 'L')
+                    col_city = column_index_master.get('City (Attendees)', 'BJ')
+                    col_organizer = column_index_master.get('Organizer of the Meeting', 'BK')
+                    
+                    if found_dept:
+                        update_payloads.append({"range": f"{tab_name}!{col_brand_size}{exact_row}:{col_brand_size}{exact_row}", "values": [[found_dept]]})
+                    if found_city:
+                        update_payloads.append({"range": f"{tab_name}!{col_city}{exact_row}:{col_city}{exact_row}", "values": [[found_city]]})
+                    if organizer_email:
+                        update_payloads.append({"range": f"{tab_name}!{col_organizer}{exact_row}:{col_organizer}{exact_row}", "values": [[organizer_email]]})
 
                 # 3. Push the updates
                 if update_payloads:
@@ -2208,7 +2241,7 @@ def main():
         # ADDED BATCH LIMIT TO PREVENT CLOUD RUN TIMEOUT
         events_to_update_list = events_to_update_list[:5] 
         print(f"Limiting to 5 Master Sheet updates this run to prevent timeouts.")
-        update_events_in_sheets(master_sheet_id, events_to_update_list, sheets_service, NBH_SERVICE_ACCOUNTS_TO_EXCLUDE, designations)
+        update_events_in_sheets(master_sheet_id, events_to_update_list, sheets_service, NBH_SERVICE_ACCOUNTS_TO_EXCLUDE, designations, email_to_geo_map, column_index_master)
     
 
     updated_meeting_ids = read_data_from_sheets(master_sheet_id, sheets_service, "Meeting_data!A2:A")
