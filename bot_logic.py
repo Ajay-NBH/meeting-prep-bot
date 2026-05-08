@@ -1662,11 +1662,11 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
 # NEW: IMAGE GENERATION WORKFLOW (ART DIRECTOR & ARTIST)
 # =====================================================================
 def get_brand_visual_context(gemini_client, brand_name, industry, generated_brief=""):
-    """The Art Director: Extracts the creative hook and translates it into a VISUAL SCENE and a SHORT HEADLINE."""
+    """The Art Director: Combines recent brand campaigns with current seasons/trends for a creative pitch."""
     if not gemini_client: return None
     
     prompt = f"""
-    You are an expert Brand Visual Strategist. Research the brand '{brand_name}' (Industry: {industry}) in India to find their visual identity.
+    You are an expert Brand Visual Strategist and Creative Director at a top ad agency. Research the brand '{brand_name}' (Industry: {industry}) in India.
     
     We have just generated a Pre-Meeting Brief for this brand. Review the text below:
     ---
@@ -1674,24 +1674,25 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
     ---
     
     Task:
-    1. Verify if this is a well-known brand with publicly identifiable brand colors and logos. If obscure, set "is_well_known" to false.
+    1. Identify if '{brand_name}' is a well-known brand. If obscure, set "is_well_known" to false.
     2. Identify their primary 2 brand colors.
-    3. EXTRACT THE CREATIVE HOOK: Look specifically at the "Strategic Angle & Top Solutions", "The Big Idea", or "The Creative Hook" sections in the brief above. 
-    4. TRANSLATE TO VISUALS: Formulate a "visual_scene" that visually represents this exact creative hook without using words. (e.g., If the hook is 'health checkup for affluent residents', the visual scene is 'A glowing stethoscope wrapping around a luxury apartment building'). Keep it highly descriptive but focused purely on imagery and photography.
-    5. CREATE A HEADLINE: Write a punchy, 2-to-4 word maximum headline (e.g., "Health Comes First", "Refresh Your Day"). DO NOT write long sentences.
+    3. TIMELY CREATIVE HOOK: Identify the current season, upcoming major Indian festival, or ongoing mega-trend (e.g., Summer, Monsoon, Diwali, IPL, World Cup, Back-to-School, Wedding Season).
+    4. BRAND'S RECENT FOCUS: Identify a recent campaign, core product, or theme associated with '{brand_name}'.
+    5. CREATE THE VISUAL SCENE: Merge the 'Timely Trend' and the 'Brand Focus' into a highly creative, dynamic visual concept for an advertisement. (e.g., If Nike + Monsoon: "A sleek running shoe splashing through a neon-lit puddle with rain deflecting off it"). Keep it highly descriptive for an image generator. Focus purely on the visual imagery.
+    6. CREATE A SLOGAN: Write a catchy, meaningful 2-to-5 word advertising slogan/quote that ties this together (e.g., "Conquer the Storm", "Unleash Your Summer"). DO NOT write long sentences.
     
     Return ONLY a valid JSON object:
     {{
         "is_well_known": true/false,
-        "primary_colors": "e.g., Red and Gold",
-        "visual_scene": "e.g., 'A glowing stethoscope wrapping around a luxury apartment building'",
-        "short_headline": "e.g., 'Health Comes First'"
+        "primary_colors": "e.g., Blue and White",
+        "visual_scene": "e.g., 'A sleek running shoe splashing through a neon-lit puddle with rain deflecting off it'",
+        "short_slogan": "e.g., 'Conquer the Storm'"
     }}
     """
     
     try:
         grounding_tool = types.Tool(google_search=types.GoogleSearch())
-        config = types.GenerateContentConfig(temperature=0.1, tools=[grounding_tool]) 
+        config = types.GenerateContentConfig(temperature=0.2, tools=[grounding_tool]) 
         
         response = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
         result_text = response.text.strip()
@@ -1702,54 +1703,51 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
         return {"is_well_known": False}
 
 def generate_creative_with_gemini_image(gemini_client, brand_name, industry, visual_context):
-    """The Artist: Generates the 3-in-1 vertical composite, maintaining exact structure but removing long text."""
+    """The Artist: Generates the 3-in-1 vertical composite featuring the dynamic trend-based visual and slogan."""
     if not visual_context.get("is_well_known"):
         print(f"  Skipping image generation for {brand_name}: Brand too obscure.")
         return None
         
     colors = visual_context.get("primary_colors", "vibrant colors")
     visual_scene = visual_context.get("visual_scene", "modern lifestyle imagery")
-    short_headline = visual_context.get("short_headline", "Exclusive Offer")
+    short_slogan = visual_context.get("short_slogan", "Exclusive Offer")
     
     image_prompt = f"""
     Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom.
-    Each section must look like a candid smartphone photo taken inside a standard Indian residential society — NOT ultra-luxury, NOT studio lighting. Use natural, slightly overcast daylight.
+    Each section must look like a candid smartphone photo taken inside a standard Indian residential society. Use natural daylight.
 
-    # BRAND & CAMPAIGN CONTEXT:
-    This is an advertisement for '{brand_name}', operating in the '{industry}' industry. 
-    Primary brand colors: {colors}.
-    
-    # CAMPAIGN CREATIVE HOOK (VISUALIZE THIS):
-    Visual Scene: "{visual_scene}"
-    Headline Text: "{short_headline}"
+    # ADVERTISEMENT CREATIVE BRIEF:
+    Brand: '{brand_name}' | Industry: '{industry}' | Brand Colors: {colors}
+    Dynamic Visual Scene: "{visual_scene}"
+    Campaign Slogan: "{short_slogan}"
 
-    CRITICAL RULE FOR TEXT: DO NOT write paragraphs or long sentences on the ads. AI image generators struggle with long text and it looks messy. ONLY use the exact short headline: "{short_headline}". Rely entirely on the "Visual Scene" to communicate the creative hook.
+    # CRITICAL TEXT & DESIGN RULES:
+    1. The banners must showcase the "Dynamic Visual Scene" as a high-end, creative, and eye-catching advertisement.
+    2. TEXT LIMITATION: ONLY write the exact Campaign Slogan: "{short_slogan}".
+    3. DO NOT write long paragraphs. DO NOT write useless meta-text like "Gate Banner", "Ad for you", or "Created for you". Keep the text meaningful and limited strictly to the slogan.
 
     - TOP SECTION — GATE BRANDING
       - A standard Indian apartment complex entrance. Black wrought-iron sliding gate.
-      - A thin, flat 4ft x 3ft horizontal ACP board displaying a '{brand_name}' ad, mounted on the gate bars.
-      - The ad features their primary colors ({colors}), visually executes the Visual Scene ("{visual_scene}"), and prints the Headline.
-      - Trees and apartment buildings visible naturally in the background. Watchman and resident in background.
+      - A 4ft x 3ft horizontal ACP board displaying the '{brand_name}' ad, mounted on the gate.
+      - The ad features the dynamic Visual Scene ("{visual_scene}") and prints the slogan "{short_slogan}" in bold, stylish typography.
+      - Background: Trees and apartment buildings visible naturally. Watchman or resident in background.
 
     - MIDDLE SECTION — LIFT BRANDING
       - Brushed stainless steel elevator interior with vertical metallic grain texture.
-      - An A3 size printed poster in a thin clean white acrylic frame showing the '{brand_name}' ad, mounted on the wall.
-      - The poster uses the colors ({colors}), reflects the Visual Scene ("{visual_scene}"), and prints the Headline.
-      - Elevator buttons and CCTV camera in corner visible. Resident entering lift.
+      - An A3 size printed poster in a clean acrylic frame showing the '{brand_name}' ad, mounted on the wall.
+      - The poster features the Visual Scene ("{visual_scene}") and the slogan "{short_slogan}".
+      - Background: Elevator buttons, CCTV camera in corner.
 
     - BOTTOM SECTION — DIGITAL IN-APP (PAC)
-      - A clean, high-fidelity digital UI mockup (screenshot) of the NoBrokerHood mobile app on a smartphone screen.
+      - A clean digital UI mockup of the NoBrokerHood mobile app on a smartphone screen.
       - APP HEADER: White header with "Back" button icon and title "My Visitors".
-      - THE PAC OVERLAY: A large, crisp white card with rounded corners overlaying the screen.
-          - Bold black text: "Pre approval created".
-          - Small grey text: "for your {brand_name} request".
-      - THE AD CREATIVE: Below the notification card, a large, high-resolution square advertisement for '{brand_name}' featuring the Visual Scene ("{visual_scene}"), and colors ({colors}).
-      - BACKGROUND OF UI: The apartment list behind the overlay should be darkened (dimmed).
+      - THE PAC OVERLAY: A white card overlaying the screen. Bold black text: "Pre approval created". Small grey text: "for your {brand_name} request".
+      - THE AD CREATIVE: Below the notification card, a high-resolution square ad for '{brand_name}' featuring the Visual Scene ("{visual_scene}") and the slogan "{short_slogan}".
+      - BACKGROUND: The apartment list behind the overlay should be dimmed.
 
     # LAYOUT RULES:
-    - You MUST show all 3 panels vertically (top gate, middle lift, bottom in-app).
-    - Separate sections with a thin white horizontal divider line.
-    - BRAND INTEGRITY: The {brand_name} branding MUST be of professional marketing quality.
+    - Show all 3 panels vertically (top gate, middle lift, bottom in-app) separated by a thin white line.
+    - The '{brand_name}' branding and visual scene MUST look like an expensive, trendy agency campaign.
     - No NoBrokerHood logos on any physical surfaces. Only '{brand_name}' branding visible on the ad panels.
     """
     
