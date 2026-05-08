@@ -1662,7 +1662,7 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
 # NEW: IMAGE GENERATION WORKFLOW (ART DIRECTOR & ARTIST)
 # =====================================================================
 def get_brand_visual_context(gemini_client, brand_name, industry, generated_brief=""):
-    """The Art Director: Uses Gemini to fetch brand colors and extract the STRATEGIC ANGLE from the text brief."""
+    """The Art Director: Extracts the creative hook and translates it into a VISUAL SCENE and a SHORT HEADLINE."""
     if not gemini_client: return None
     
     prompt = f"""
@@ -1676,14 +1676,16 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
     Task:
     1. Verify if this is a well-known brand with publicly identifiable brand colors and logos. If obscure, set "is_well_known" to false.
     2. Identify their primary 2 brand colors.
-    3. EXTRACT THE STRATEGIC PITCH: Look specifically at the "Strategic Angle & Top Solutions", "The Big Idea", or "The Creative Hook" sections in the brief above. 
-    4. Formulate a "suggested_theme" that visually translates this exact strategy (e.g., "A hyper-local QR-code product sampling kiosk", "Digital health check-up camp registration"). Keep it highly descriptive but under 20 words.
+    3. EXTRACT THE CREATIVE HOOK: Look specifically at the "Strategic Angle & Top Solutions", "The Big Idea", or "The Creative Hook" sections in the brief above. 
+    4. TRANSLATE TO VISUALS: Formulate a "visual_scene" that visually represents this exact creative hook without using words. (e.g., If the hook is 'health checkup for affluent residents', the visual scene is 'A glowing stethoscope wrapping around a luxury apartment building'). Keep it highly descriptive but focused purely on imagery and photography.
+    5. CREATE A HEADLINE: Write a punchy, 2-to-4 word maximum headline (e.g., "Health Comes First", "Refresh Your Day"). DO NOT write long sentences.
     
     Return ONLY a valid JSON object:
     {{
         "is_well_known": true/false,
         "primary_colors": "e.g., Red and Gold",
-        "suggested_theme": "e.g., 'Health check-up camp registration banner for affluent residents'"
+        "visual_scene": "e.g., 'A glowing stethoscope wrapping around a luxury apartment building'",
+        "short_headline": "e.g., 'Health Comes First'"
     }}
     """
     
@@ -1700,32 +1702,39 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
         return {"is_well_known": False}
 
 def generate_creative_with_gemini_image(gemini_client, brand_name, industry, visual_context):
-    """The Artist: Generates the 3-in-1 vertical composite using the brief's strategy and industry context."""
+    """The Artist: Generates the 3-in-1 vertical composite, maintaining exact structure but removing long text."""
     if not visual_context.get("is_well_known"):
         print(f"  Skipping image generation for {brand_name}: Brand too obscure.")
         return None
         
     colors = visual_context.get("primary_colors", "vibrant colors")
-    theme = visual_context.get("suggested_theme", "modern lifestyle")
+    visual_scene = visual_context.get("visual_scene", "modern lifestyle imagery")
+    short_headline = visual_context.get("short_headline", "Exclusive Offer")
     
     image_prompt = f"""
     Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom.
     Each section must look like a candid smartphone photo taken inside a standard Indian residential society — NOT ultra-luxury, NOT studio lighting. Use natural, slightly overcast daylight.
 
-    # BRAND & INDUSTRY CONTEXT:
+    # BRAND & CAMPAIGN CONTEXT:
     This is an advertisement for '{brand_name}', operating in the '{industry}' industry. 
-    If you do not know the exact perfect logo for '{brand_name}', you MUST use high-quality, professional imagery and generic icons that strongly represent the '{industry}' industry, utilizing their primary brand colors ({colors}). 
+    Primary brand colors: {colors}.
+    
+    # CAMPAIGN CREATIVE HOOK (VISUALIZE THIS):
+    Visual Scene: "{visual_scene}"
+    Headline Text: "{short_headline}"
+
+    CRITICAL RULE FOR TEXT: DO NOT write paragraphs or long sentences on the ads. AI image generators struggle with long text and it looks messy. ONLY use the exact short headline: "{short_headline}". Rely entirely on the "Visual Scene" to communicate the creative hook.
 
     - TOP SECTION — GATE BRANDING
       - A standard Indian apartment complex entrance. Black wrought-iron sliding gate.
       - A thin, flat 4ft x 3ft horizontal ACP board displaying a '{brand_name}' ad, mounted on the gate bars.
-      - The ad features their primary colors ({colors}) and visually executes this strategic pitch: "{theme}". Include highly relevant visual elements for the '{industry}' industry.
+      - The ad features their primary colors ({colors}), visually executes the Visual Scene ("{visual_scene}"), and prints the Headline.
       - Trees and apartment buildings visible naturally in the background. Watchman and resident in background.
 
     - MIDDLE SECTION — LIFT BRANDING
       - Brushed stainless steel elevator interior with vertical metallic grain texture.
       - An A3 size printed poster in a thin clean white acrylic frame showing the '{brand_name}' ad, mounted on the wall.
-      - The poster uses the colors ({colors}), reflects the '{industry}' industry, and echoes the strategic pitch: "{theme}".
+      - The poster uses the colors ({colors}), reflects the Visual Scene ("{visual_scene}"), and prints the Headline.
       - Elevator buttons and CCTV camera in corner visible. Resident entering lift.
 
     - BOTTOM SECTION — DIGITAL IN-APP (PAC)
@@ -1734,7 +1743,7 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
       - THE PAC OVERLAY: A large, crisp white card with rounded corners overlaying the screen.
           - Bold black text: "Pre approval created".
           - Small grey text: "for your {brand_name} request".
-      - THE AD CREATIVE: Below the notification card, a large, high-resolution square advertisement for '{brand_name}' featuring the pitch "{theme}", industry elements ('{industry}'), and colors ({colors}).
+      - THE AD CREATIVE: Below the notification card, a large, high-resolution square advertisement for '{brand_name}' featuring the Visual Scene ("{visual_scene}"), and colors ({colors}).
       - BACKGROUND OF UI: The apartment list behind the overlay should be darkened (dimmed).
 
     # LAYOUT RULES:
