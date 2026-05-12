@@ -1790,8 +1790,7 @@ def get_brand_visual_context_v2(gemini_client, brand_name, industry, generated_b
     3. CURRENT LIVE CAMPAIGN: Search for their latest 2024/2025/2026 marketing campaign in India (e.g., if Puma, it's "Go Wild"). What is the core theme and official slogan?
     4. VISUAL SCENE: Create a highly creative visual scene based strictly on this *actual live campaign*.
     5. SHORT SLOGAN: Provide the exact 2-to-5 word slogan from their current campaign.
-    6. LIFT STYLE: Choose the most creative elevator branding style: "Full Exterior Door Vinyl Wrap" OR "Inside Elevator Framed Poster".
-    7. THIRD ASSET: Based on the brand's nature, choose ONE: "Island Banner (Horizontal In-App Digital Ad)" OR "Physical Gate Banner".
+    6. THIRD ASSET: Based on the brand's nature, choose ONE: "Island Banner (Horizontal In-App Digital Ad)" OR "Physical Gate Banner".
     
     Return ONLY a valid JSON object:
     {{
@@ -1800,7 +1799,6 @@ def get_brand_visual_context_v2(gemini_client, brand_name, industry, generated_b
         "campaign_name": "...",
         "visual_scene": "...",
         "short_slogan": "...",
-        "lift_style": "...",
         "third_asset": "..."
     }}
     """
@@ -1818,21 +1816,17 @@ def get_brand_visual_context_v2(gemini_client, brand_name, industry, generated_b
         return {"is_well_known": False}
 
 def generate_creative_with_gemini_image_v2(gemini_client, brand_name, industry, visual_context):
-    """V2 Artist: Generates photorealistic mockups with Island Banners and Creative Lift Wraps."""
+    """V2 Artist: Generates photorealistic mockups with Island Banners and REALISTIC Inside-Lift Posters."""
     if not visual_context.get("is_well_known"):
         return None
         
     colors = visual_context.get("primary_colors", "vibrant colors")
     visual_scene = visual_context.get("visual_scene", "modern lifestyle imagery")
     short_slogan = visual_context.get("short_slogan", "Exclusive Offer")
-    lift_style = visual_context.get("lift_style", "Full Exterior Door Vinyl Wrap")
     third_asset = visual_context.get("third_asset", "Island Banner (Horizontal In-App Digital Ad)")
     
-    # 1. Construct the Lift Section based on LLM choice
-    if "Wrap" in lift_style:
-        lift_prompt = f"- MIDDLE SECTION — LIFT BRANDING: A photorealistic view of closed elevator doors in a high-end apartment lobby. The doors are completely covered in a vibrant, full vinyl wrap advertisement for '{brand_name}'. The wrap features the Visual Scene and bold typography with the slogan '{short_slogan}'. The design is split down the middle where the doors open. The colors ({colors}) are vibrant but look like printed matte vinyl."
-    else:
-        lift_prompt = f"- MIDDLE SECTION — LIFT BRANDING: Inside a modern brushed-steel elevator. A premium A3 printed poster in a clean acrylic frame is mounted on the wall. The poster shows a highly creative '{brand_name}' ad with the Visual Scene and slogan '{short_slogan}'."
+    # --- FIXED LIFT SECTION: Forced back to the realistic inside-elevator framed poster ---
+    lift_prompt = f"- MIDDLE SECTION — LIFT BRANDING: Inside a modern brushed-steel residential elevator. A premium A3 printed poster in a clean, clear acrylic frame is mounted on the metallic wall. The poster shows a highly creative '{brand_name}' ad featuring the Visual Scene and slogan '{short_slogan}'. The lighting is natural elevator downlighting. It must look like a real, untouched photograph of a physical poster."
 
     # 2. Construct the Third Asset Section based on LLM choice
     if "Island" in third_asset:
@@ -1863,7 +1857,7 @@ def generate_creative_with_gemini_image_v2(gemini_client, brand_name, industry, 
       - Below the text, a high-resolution square ad for '{brand_name}' featuring the Visual Scene and slogan '{short_slogan}'.
     """
     
-    print(f"  🎨 Generating V2 Dynamic Image for {brand_name} | Assets: {lift_style} & {third_asset}")
+    print(f"  🎨 Generating V2 Dynamic Image for {brand_name} | Assets: Realistic Lift Poster & {third_asset}")
     
     try:
         response = gemini_client.models.generate_content(
