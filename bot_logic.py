@@ -1773,6 +1773,115 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     except Exception as e:
         print(f"   Error generating image with Gemini: {e}")
         return None
+
+# =========================================
+# NEW V2 TESTING FUNCTIONS PASTED HERE
+# =========================================
+def get_brand_visual_context_v2(gemini_client, brand_name, industry, generated_brief=""):
+    """V2 Art Director: Hunts for actual live campaigns and dynamically selects Island vs Gate banners."""
+    if not gemini_client: return None
+    
+    prompt = f"""
+    You are an elite Brand Visual Strategist at a top ad agency. Research '{brand_name}' (Industry: {industry}) in India.
+    
+    Task:
+    1. is_well_known: True if the brand is recognizable, False if obscure.
+    2. primary_colors: Identify their exact 2 primary brand colors.
+    3. CURRENT LIVE CAMPAIGN: Search for their latest 2024/2025/2026 marketing campaign in India (e.g., if Puma, it's "Go Wild"). What is the core theme and official slogan?
+    4. VISUAL SCENE: Create a highly creative visual scene based strictly on this *actual live campaign*.
+    5. SHORT SLOGAN: Provide the exact 2-to-5 word slogan from their current campaign.
+    6. LIFT STYLE: Choose the most creative elevator branding style: "Full Exterior Door Vinyl Wrap" OR "Inside Elevator Framed Poster".
+    7. THIRD ASSET: Based on the brand's nature, choose ONE: "Island Banner (Horizontal In-App Digital Ad)" OR "Physical Gate Banner".
+    
+    Return ONLY a valid JSON object:
+    {{
+        "is_well_known": true/false,
+        "primary_colors": "...",
+        "campaign_name": "...",
+        "visual_scene": "...",
+        "short_slogan": "...",
+        "lift_style": "...",
+        "third_asset": "..."
+    }}
+    """
+    
+    try:
+        grounding_tool = types.Tool(google_search=types.GoogleSearch())
+        config = types.GenerateContentConfig(temperature=0.2, tools=[grounding_tool]) 
+        
+        response = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
+        result_text = response.text.strip()
+        result_text = re.sub(r'```json\s*|\s*```', '', result_text).strip()
+        return json.loads(result_text)
+    except Exception as e:
+        print(f"  V2 Visual context extraction failed for {brand_name}: {e}")
+        return {"is_well_known": False}
+
+def generate_creative_with_gemini_image_v2(gemini_client, brand_name, industry, visual_context):
+    """V2 Artist: Generates photorealistic mockups with Island Banners and Creative Lift Wraps."""
+    if not visual_context.get("is_well_known"):
+        return None
+        
+    colors = visual_context.get("primary_colors", "vibrant colors")
+    visual_scene = visual_context.get("visual_scene", "modern lifestyle imagery")
+    short_slogan = visual_context.get("short_slogan", "Exclusive Offer")
+    lift_style = visual_context.get("lift_style", "Full Exterior Door Vinyl Wrap")
+    third_asset = visual_context.get("third_asset", "Island Banner (Horizontal In-App Digital Ad)")
+    
+    # 1. Construct the Lift Section based on LLM choice
+    if "Wrap" in lift_style:
+        lift_prompt = f"- MIDDLE SECTION — LIFT BRANDING: A photorealistic view of closed elevator doors in a high-end apartment lobby. The doors are completely covered in a vibrant, full vinyl wrap advertisement for '{brand_name}'. The wrap features the Visual Scene and bold typography with the slogan '{short_slogan}'. The design is split down the middle where the doors open. The colors ({colors}) are vibrant but look like printed matte vinyl."
+    else:
+        lift_prompt = f"- MIDDLE SECTION — LIFT BRANDING: Inside a modern brushed-steel elevator. A premium A3 printed poster in a clean acrylic frame is mounted on the wall. The poster shows a highly creative '{brand_name}' ad with the Visual Scene and slogan '{short_slogan}'."
+
+    # 2. Construct the Third Asset Section based on LLM choice
+    if "Island" in third_asset:
+        asset_prompt = f"- TOP SECTION — DIGITAL ISLAND BANNER: A crisp, horizontal digital web/app banner design (aspect ratio roughly 3:1). It features a highly creative, vivid digital illustration or photo-composite of the Visual Scene. It includes the '{brand_name}' branding, the bold slogan '{short_slogan}', and a small 'Explore Now' CTA button. Rich {colors} colors. Professional digital UI design style."
+    else:
+        asset_prompt = f"- TOP SECTION — GATE BANNER: A standard Indian apartment complex entrance with a black wrought-iron sliding gate. A 4ft x 3ft physical ACP board is mounted on the gate displaying the '{brand_name}' ad. It features the Visual Scene and slogan '{short_slogan}'. Natural daylight, slightly weathered real-world look."
+
+    # 3. Assemble the Master Prompt
+    image_prompt = f"""
+    Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom, separated by thin white lines.
+    Style: Architectural photography combined with professional advertising mockups. DO NOT make it look like hyper-saturated, cartoonish AI art. 
+
+    # ADVERTISEMENT CREATIVE BRIEF:
+    Brand: '{brand_name}' | Colors: {colors}
+    Dynamic Visual Scene: "{visual_scene}"
+    Campaign Slogan: "{short_slogan}"
+
+    # CRITICAL TEXT RULES:
+    ONLY write the exact Campaign Slogan: "{short_slogan}". Do not invent other random text or gibberish.
+
+    {asset_prompt}
+
+    {lift_prompt}
+
+    - BOTTOM SECTION — IN-APP PAC MOCKUP:
+      - A clean digital UI mockup of a mobile app on a smartphone screen held by a hand.
+      - A white overlay card reads in bold black text: "Pre approval created". Small grey text: "for your {brand_name} request".
+      - Below the text, a high-resolution square ad for '{brand_name}' featuring the Visual Scene and slogan '{short_slogan}'.
+    """
+    
+    print(f"  🎨 Generating V2 Dynamic Image for {brand_name} | Assets: {lift_style} & {third_asset}")
+    
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-3-pro-image-preview", 
+            contents=image_prompt,
+            config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"])
+        )
+
+        if response.candidates:
+            for part in response.candidates[0].content.parts:
+                if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                    print(f"  ✅ V2 Image generated successfully!")
+                    return part.inline_data.data
+        return None
+    except Exception as e:
+        print(f"   Error generating V2 image: {e}")
+        return None
+
 # --- Email Sending ---
 def create_email_message_with_image(sender, to_emails_list, subject, message_text_html, image_bytes=None):
     """Creates an email message using the proven EmailMessage logic from outbound script."""
@@ -2614,15 +2723,28 @@ def main():
         creative_image_bytes = None
 
         if ENABLE_IMAGE_GENERATION:
-            print(f"  🎨 LIVE MODE: Generating strategic image for '{meeting_data['title']}'...")
             if generated_brief and "Error:" not in generated_brief:
                 try:
-                    # THE ART DIRECTOR: Extract the strategy from the generated text
-                    visual_context = get_brand_visual_context(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], generated_brief)
+                    # --- 🛡️ SAFE TESTING LOGIC 🛡️ ---
+                    # Check if the word "testing" is in the meeting title (case-insensitive)
+                    is_test_meeting = "testing" in meeting_data['title'].lower()
+
+                    if is_test_meeting:
+                        print(f"  🧪 V2 TEST MODE: 'Testing' found in title. Generating highly creative dynamic image for '{meeting_data['title']}'...")
+                        # THE V2 ART DIRECTOR (New Island/Wrap Logic)
+                        visual_context = get_brand_visual_context_v2(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], generated_brief)
+                        if visual_context:
+                            # THE V2 ARTIST (New Image Prompt)
+                            creative_image_bytes = generate_creative_with_gemini_image_v2(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], visual_context)
                     
-                    if visual_context:
-                        # THE ARTIST: Draw the image using the Brand, Industry, and extracted Strategy
-                        creative_image_bytes = generate_creative_with_gemini_image(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], visual_context)
+                    else:
+                        print(f"  🎨 LIVE MODE: Generating standard strategic image for '{meeting_data['title']}'...")
+                        # THE V1 ART DIRECTOR (Original Gate/Poster Logic)
+                        visual_context = get_brand_visual_context(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], generated_brief)
+                        if visual_context:
+                            # THE V1 ARTIST (Original Image Prompt)
+                            creative_image_bytes = generate_creative_with_gemini_image(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], visual_context)
+                
                 except Exception as e:
                     print(f"  Warning: Failed to generate creative image: {e}")
             else:
