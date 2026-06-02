@@ -1679,20 +1679,18 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
     ---
     
     Task:
-    1. is_well_known: Set to true if the brand is recognizable in India, or false if obscure.
-    2. primary_colors: Identify their exact 2 primary brand colors (e.g., "Warm Amber and Dark Espresso Brown").
-    3. TIMELY CREATIVE HOOK: Identify the current season, upcoming major Indian festival, or ongoing trend relevant to India (e.g., Monsoon, Diwali, Summer, Back-to-School, Wedding Season).
-    4. BRAND'S RECENT FOCUS: Identify a recent campaign theme, core product focus, or authentic imagery associated with the brand in India.
-    5. CREATE THE VISUAL SCENE: Combine the 'Timely Trend' and the 'Brand Focus' into a premium, minimalist visual scene for an advertisement. Focus on real-world, elegant elements arranged naturally. Examples:
+    1. primary_colors: Identify their exact 2 primary brand colors (e.g., "Warm Amber and Dark Espresso Brown").
+    2. TIMELY CREATIVE HOOK: Identify the current season, upcoming major Indian festival, or ongoing trend relevant to India (e.g., Monsoon, Diwali, Summer, Back-to-School, Wedding Season).
+    3. BRAND'S RECENT FOCUS: Identify a recent campaign theme, core product focus, or authentic imagery associated with the brand in India.
+    4. CREATE THE VISUAL SCENE: Combine the 'Timely Trend' and the 'Brand Focus' into a premium, minimalist visual scene for an advertisement. Focus on real-world, elegant elements arranged naturally. Examples:
        - "A premium traditional copper plate with clean South Indian snacks arranged elegantly next to a glass of hot filter coffee with natural vapor rising, warm daylight lighting."
        - "An elegant skincare bottle next to fresh dew-covered flowers on a clean, textured stone surface under soft natural lighting."
        - "A sleek running shoe splashing through water during monsoon, with clean reflections and soft ambient light."
        Avoid busy, chaotic, or over-saturated cartoonish scenes. Keep the focus clean, realistic, and high-end.
-    6. CREATE A SLOGAN: Write a catchy, meaningful 2-to-3 word advertising slogan/quote that fits the visual scene (e.g., "Taste of Tradition", "Freshness First", "Step into Summer"). DO NOT write long sentences or multiple slogans.
+    5. CREATE A SLOGAN: Write a catchy, meaningful 2-to-3 word advertising slogan/quote that fits the visual scene (e.g., "Taste of Tradition", "Freshness First", "Step into Summer"). DO NOT write long sentences or multiple slogans.
     
     Return ONLY a valid JSON object:
     {{
-        "is_well_known": true/false,
         "primary_colors": "...",
         "visual_scene": "...",
         "short_slogan": "..."
@@ -1709,15 +1707,15 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
         return json.loads(result_text)
     except Exception as e:
         print(f"  Visual context extraction failed for {brand_name}: {e}")
-        return {"is_well_known": False}
+        return None
 
 def generate_creative_with_gemini_image(gemini_client, brand_name, industry, visual_context):
     """
     Acts as the Photographer/Artist: Uses the dedicated 'imagen-3.0-generate-002' model 
     for authentic physical texture, realistic lighting, and premium photorealistic mockups.
     """
-    if not visual_context.get("is_well_known"):
-        print(f"  Skipping image generation for {brand_name}: Brand too obscure.")
+    if not visual_context:
+        print(f"  Skipping image generation for {brand_name}: Visual context was not extracted.")
         return None
         
     colors = visual_context.get("primary_colors", "vibrant colors")
@@ -1772,9 +1770,19 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
         )
 
         if result and result.generated_images:
-            # Extract image bytes directly from native image response object
-            print(f"  ✅ Creative image successfully generated for {brand_name}!")
-            return result.generated_images[0].image.image_bytes
+            # Fetch raw image data container
+            raw_data = result.generated_images[0].image.image_bytes
+            
+            # Safe Decode Check: Decode Base64 string/bytes back into binary raw data
+            if isinstance(raw_data, str):
+                raw_data = base64.b64decode(raw_data)
+            elif isinstance(raw_data, bytes):
+                # If bytes are base64 encoded instead of binary JPEG format
+                if not raw_data.startswith(b'\xff\xd8\xff'):
+                    raw_data = base64.b64decode(raw_data)
+
+            print(f"  ✅ Creative image successfully generated and parsed for {brand_name}!")
+            return raw_data
 
         print(f"   No image data returned from Imagen 3 for {brand_name}.")
         return None
