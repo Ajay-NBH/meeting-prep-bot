@@ -1713,14 +1713,15 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
 
 def generate_creative_with_gemini_image(gemini_client, brand_name, industry, visual_context):
     """
-    Acts as the Photographer/Artist: Uses the 'gemini-3-pro-image-preview' model
-    to render the ad mockups ONLY if the brand context is well known and verified.
+    Acts as the Photographer/Artist: Uses 'gemini-3-pro-image-preview' to generate
+    photorealistic physical mockups representing a standard Indian residential society,
+    including a uniformed security guard, iron sliding gate, and concrete driveway.
     """
     if not visual_context:
         print(f"  Skipping image generation for {brand_name}: Visual context was not extracted.")
         return None
 
-    # Strict screening check to prevent hallucinating logos for local/small brands
+    # Strict screening check to prevent generating hallucinated logos for obscure brands
     if not visual_context.get("is_well_known"):
         print(f"  Skipping image generation for {brand_name}: Brand designated as regional or obscure to avoid visual hallucination.")
         return None
@@ -1731,35 +1732,38 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     
     image_prompt = f"""
     Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom, separated by thin, clean white lines.
-    Style: Warm, high-end architectural and lifestyle photography. Focus on realistic physical textures (matte poster paper, polished steel elevator walls, brushed iron gates, clean smartphone screen glass). Use natural daylight and generate authentic soft shadows.
-    AVOID: Over-saturated, cartoonish AI styles, chaotic layouts, or unnecessary text banners.
+    Style: Warm, photorealistic architectural and street photography. Captured in natural, direct daylight with soft, realistic shadows. Authentic physical textures (metal, steel, concrete, paper, clear glass).
+    AVOID: Highly saturated or cartoonish AI styling, artificial glossy filters, or unnecessary labels.
 
     # ADVERTISEMENT CREATIVE BRIEF:
-    Brand: '{brand_name}' | Industry: '{industry}' | Brand Colors: {colors}
-    Dynamic Visual Scene: "{visual_scene}"
-    Campaign Slogan: "{short_slogan}"
+    Brand: '{brand_name}' | Primary Colors: {colors}
+    Visual Scene: "{visual_scene}"
+    Slogan: "{short_slogan}"
 
-    # CRITICAL TEXT RULES:
-    1. The only text allowed on the advertising panels is the brand name '{brand_name}' and the short slogan "{short_slogan}".
-    2. Render the text in a clean, modern, and elegant font integrated naturally into the ad layouts.
-    3. DO NOT write labels, annotations, or metadata on the image (such as "Gate Banner", "Lift Mockup", or "Created for you").
+    # CRITICAL DESIGN & TEXT RULES:
+    1. The advertising panels must display a professional, high-end campaign design featuring '{brand_name}' branding, the visual scene, and the exact slogan "{short_slogan}".
+    2. Only write '{brand_name}' and "{short_slogan}". Do not write meta-labels (like "Top Section", "Middle Section", "Gate Banner", or "Lift Branding") anywhere on the image.
+    3. The ad design must look physically printed and integrated naturally, displaying realistic perspective angles and reflections.
 
     - TOP SECTION — GATE BRANDING
-      - A physical, high-resolution 4ft x 3ft horizontal ACP board mounted cleanly onto a classic wrought-iron entrance gate of a premium Indian residential society.
-      - The board features the campaign visual scene ("{visual_scene}") using the brand colors {colors}, and displays the slogan "{short_slogan}" in an elegant typographic layout.
-      - Staged in soft, natural outdoor daylight, with trees and a building exterior visible softly out of focus in the background.
+      - A realistic entrance of a standard Indian residential apartment complex (gated society).
+      - A large, classic black wrought-iron sliding gate blocks the paved concrete driveway.
+      - A professional Indian security guard (watchman) wearing a standard blue security uniform with a lanyard stands alert nearby.
+      - In the background, modern multi-story residential apartment towers and green trees are visible under clear daylight.
+      - A physical, horizontally-oriented rectangular ACP board (aspect ratio 3:1) is mounted securely onto the iron gate.
+      - The board displays a clean, professional ad layout of '{brand_name}' featuring the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
 
     - MIDDLE SECTION — LIFT BRANDING
-      - Staged inside a modern residential elevator with elegant brushed-steel walls.
-      - An A3-size printed paper poster is displayed inside a clean, thin acrylic frame mounted flush on the steel wall.
-      - The poster features the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
-      - Captured under soft elevator downlighting, showing subtle, realistic metallic reflections on the walls.
+      - Inside a modern, high-end residential elevator with brushed-steel metallic walls.
+      - A vertical A3 rectangular poster inside a clean, thin acrylic frame with small metallic corner standoffs is mounted flush on the steel wall.
+      - The poster displays the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+      - Captured with slightly angled perspective, showing realistic glass depth and soft elevator downlighting reflections on the steel surface.
 
     - BOTTOM SECTION — DIGITAL IN-APP MOCKUP (PAC)
-      - A close-up shot of a smartphone held in a hand, displaying a clean mobile application interface.
-      - At the top of the screen, a white overlay card reads: "Pre approval created for your {brand_name} request" in a neat system font.
-      - Below this notification card, a high-resolution square advertisement banner is cleanly embedded, showcasing the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
-      - The interface is sharp and displays natural screen glass reflections.
+      - A close-up shot of a smartphone held naturally in a hand.
+      - The screen shows a clean UI of the NoBrokerHood mobile app with the white visitor pre-approval notification card.
+      - Directly below the notification card, a clean, high-resolution square (1:1 aspect ratio) ad banner displays the brand's campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+      - The ad looks like a native, premium app-placement banner, with crisp rendering and subtle screen glass reflections.
     """
     
     print(f"  🎨 Generating high-fidelity visual creative for {brand_name} using gemini-3-pro-image-preview...")
