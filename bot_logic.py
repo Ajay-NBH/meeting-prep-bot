@@ -1659,13 +1659,13 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
              return "Error: Gemini API quota likely exceeded. Please check your Google Cloud/AI Studio quotas."
         return f"Error: Exception during Gemini call: {e}"
 # =====================================================================
-# UNIFIED HIGH-QUALITY IMAGE GENERATION WORKFLOW (IMAGEN 3.0 API)
+# UNIFIED HIGH-QUALITY IMAGE GENERATION WORKFLOW
 # =====================================================================
 def get_brand_visual_context(gemini_client, brand_name, industry, generated_brief=""):
     """
     Acts as the Creative Director: Extracts brand colors, campaign themes,
     and devises a clean, minimalist visual scene with limited slogan text.
-    Uses Google search grounding to find real brand insights.
+    Determines if the brand is sufficiently prominent to prevent hallucinated imagery.
     """
     if not gemini_client: 
         return None
@@ -1679,18 +1679,20 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
     ---
     
     Task:
-    1. primary_colors: Identify their exact 2 primary brand colors (e.g., "Warm Amber and Dark Espresso Brown").
-    2. TIMELY CREATIVE HOOK: Identify the current season, upcoming major Indian festival, or ongoing trend relevant to India (e.g., Monsoon, Diwali, Summer, Back-to-School, Wedding Season).
-    3. BRAND'S RECENT FOCUS: Identify a recent campaign theme, core product focus, or authentic imagery associated with the brand in India.
-    4. CREATE THE VISUAL SCENE: Combine the 'Timely Trend' and the 'Brand Focus' into a premium, minimalist visual scene for an advertisement. Focus on real-world, elegant elements arranged naturally. Examples:
+    1. is_well_known: Set to true ONLY if '{brand_name}' is a widely recognized national or multinational brand with established brand guidelines, recognizable logos, and distinct visual campaigns in India (e.g., KFC, Coca-Cola, Tanishq, Puma, Horlicks, Swiggy, Amazon). Set to false if the brand is highly localized, a minor regional outlet, a very early-stage startup, or obscure (e.g., Sweet Karam Coffee, local laundry, single-city businesses).
+    2. primary_colors: Identify their exact 2 primary brand colors (e.g., "Warm Amber and Dark Espresso Brown").
+    3. TIMELY CREATIVE HOOK: Identify the current season, upcoming major Indian festival, or ongoing trend relevant to India (e.g., Monsoon, Diwali, Summer, Back-to-School, Wedding Season).
+    4. BRAND'S RECENT FOCUS: Identify a recent campaign theme, core product focus, or authentic imagery associated with the brand in India.
+    5. CREATE THE VISUAL SCENE: Combine the 'Timely Trend' and the 'Brand Focus' into a premium, minimalist visual scene for an advertisement. Focus on real-world, elegant elements arranged naturally. Examples:
        - "A premium traditional copper plate with clean South Indian snacks arranged elegantly next to a glass of hot filter coffee with natural vapor rising, warm daylight lighting."
        - "An elegant skincare bottle next to fresh dew-covered flowers on a clean, textured stone surface under soft natural lighting."
        - "A sleek running shoe splashing through water during monsoon, with clean reflections and soft ambient light."
        Avoid busy, chaotic, or over-saturated cartoonish scenes. Keep the focus clean, realistic, and high-end.
-    5. CREATE A SLOGAN: Write a catchy, meaningful 2-to-3 word advertising slogan/quote that fits the visual scene (e.g., "Taste of Tradition", "Freshness First", "Step into Summer"). DO NOT write long sentences or multiple slogans.
+    6. CREATE A SLOGAN: Write a catchy, meaningful 2-to-3 word advertising slogan/quote that fits the visual scene (e.g., "Taste of Tradition", "Freshness First", "Step into Summer"). DO NOT write long sentences or multiple slogans.
     
     Return ONLY a valid JSON object:
     {{
+        "is_well_known": true/false,
         "primary_colors": "...",
         "visual_scene": "...",
         "short_slogan": "..."
@@ -1711,11 +1713,16 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
 
 def generate_creative_with_gemini_image(gemini_client, brand_name, industry, visual_context):
     """
-    Acts as the Photographer/Artist: Uses the dedicated 'imagen-3.0-generate-002' model 
-    for authentic physical texture, realistic lighting, and premium photorealistic mockups.
+    Acts as the Photographer/Artist: Uses the 'gemini-3-pro-image-preview' model
+    to render the ad mockups ONLY if the brand context is well known and verified.
     """
     if not visual_context:
         print(f"  Skipping image generation for {brand_name}: Visual context was not extracted.")
+        return None
+
+    # Strict screening check to prevent hallucinating logos for local/small brands
+    if not visual_context.get("is_well_known"):
+        print(f"  Skipping image generation for {brand_name}: Brand designated as regional or obscure to avoid visual hallucination.")
         return None
         
     colors = visual_context.get("primary_colors", "vibrant colors")
@@ -1755,39 +1762,37 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
       - The interface is sharp and displays natural screen glass reflections.
     """
     
-    print(f"  🎨 Generating high-fidelity visual creative for {brand_name} using Imagen 3...")
+    print(f"  🎨 Generating high-fidelity visual creative for {brand_name} using gemini-3-pro-image-preview...")
     
     try:
-        # Utilizing Google GenAI SDK dedicated image generator
-        result = gemini_client.models.generate_images(
-            model='imagen-3.0-generate-002',
-            prompt=image_prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                output_mime_type="image/jpeg",
-                aspect_ratio="3:4" # Vertical layout format for email
+        response = gemini_client.models.generate_content(
+            model="gemini-3-pro-image-preview",
+            contents=image_prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"]
             )
         )
 
-        if result and result.generated_images:
-            # Fetch raw image data container
-            raw_data = result.generated_images[0].image.image_bytes
-            
-            # Safe Decode Check: Decode Base64 string/bytes back into binary raw data
-            if isinstance(raw_data, str):
-                raw_data = base64.b64decode(raw_data)
-            elif isinstance(raw_data, bytes):
-                # If bytes are base64 encoded instead of binary JPEG format
-                if not raw_data.startswith(b'\xff\xd8\xff'):
-                    raw_data = base64.b64decode(raw_data)
+        if response.candidates:
+            for part in response.candidates[0].content.parts:
+                if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                    raw_data = part.inline_data.data
+                    
+                    # Safety decoding validation
+                    if isinstance(raw_data, str):
+                        raw_data = base64.b64decode(raw_data)
+                    elif isinstance(raw_data, bytes):
+                        # Ensure bytes are decoded back to raw binary jpeg data
+                        if not raw_data.startswith(b'\xff\xd8\xff'):
+                            raw_data = base64.b64decode(raw_data)
+                    
+                    print(f"  ✅ Image generated successfully for {brand_name}!")
+                    return raw_data
 
-            print(f"  ✅ Creative image successfully generated and parsed for {brand_name}!")
-            return raw_data
-
-        print(f"   No image data returned from Imagen 3 for {brand_name}.")
+        print(f"   No image data found in response for {brand_name}.")
         return None
     except Exception as e:
-        print(f"   Error generating image with Imagen 3: {e}")
+        print(f"   Error generating image with gemini-3-pro-image-preview: {e}")
         return None
 
 # --- Email Sending ---
