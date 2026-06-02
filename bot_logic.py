@@ -1663,32 +1663,29 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
 # =====================================================================
 def get_brand_visual_context(gemini_client, brand_name, industry, generated_brief=""):
     """
-    Acts as the Creative Director: Extracts brand colors, campaign themes,
-    and devises a clean, minimalist visual scene with limited slogan text.
-    Determines if the brand is sufficiently prominent to prevent hallucinated imagery.
+    Acts as the Creative Director: Analyzes the generated pre-meeting brief to
+    extract the exact 'Creative Hook', 'The Big Idea', or 'Solution A/B' proposed.
+    Transforms this active sales pitch into the core theme of the mockups.
     """
     if not gemini_client: 
         return None
     
     prompt = f"""
-    You are an expert Brand Visual Strategist and Creative Director at a top ad agency. Research the brand '{brand_name}' (Industry: {industry}) in India.
-    
-    We have just generated a Pre-Meeting Brief for this brand. Review the text below:
+    You are an expert Brand Visual Strategist and Creative Director at a top ad agency. 
+    Analyze the generated Pre-Meeting Brief below for the brand '{brand_name}' (Industry: {industry}):
     ---
     {generated_brief}
     ---
     
     Task:
-    1. is_well_known: Set to true ONLY if '{brand_name}' is a widely recognized national or multinational brand with established brand guidelines, recognizable logos, and distinct visual campaigns in India (e.g., KFC, Coca-Cola, Tanishq, Puma, Horlicks, Swiggy, Amazon). Set to false if the brand is highly localized, a minor regional outlet, a very early-stage startup, or obscure (e.g., Sweet Karam Coffee, local laundry, single-city businesses).
-    2. primary_colors: Identify their exact 2 primary brand colors (e.g., "Warm Amber and Dark Espresso Brown").
-    3. TIMELY CREATIVE HOOK: Identify the current season, upcoming major Indian festival, or ongoing trend relevant to India (e.g., Monsoon, Diwali, Summer, Back-to-School, Wedding Season).
-    4. BRAND'S RECENT FOCUS: Identify a recent campaign theme, core product focus, or authentic imagery associated with the brand in India.
-    5. CREATE THE VISUAL SCENE: Combine the 'Timely Trend' and the 'Brand Focus' into a premium, minimalist visual scene for an advertisement. Focus on real-world, elegant elements arranged naturally. Examples:
-       - "A premium traditional copper plate with clean South Indian snacks arranged elegantly next to a glass of hot filter coffee with natural vapor rising, warm daylight lighting."
-       - "An elegant skincare bottle next to fresh dew-covered flowers on a clean, textured stone surface under soft natural lighting."
-       - "A sleek running shoe splashing through water during monsoon, with clean reflections and soft ambient light."
-       Avoid busy, chaotic, or over-saturated cartoonish scenes. Keep the focus clean, realistic, and high-end.
-    6. CREATE A SLOGAN: Write a catchy, meaningful 2-to-3 word advertising slogan/quote that fits the visual scene (e.g., "Taste of Tradition", "Freshness First", "Step into Summer"). DO NOT write long sentences or multiple slogans.
+    1. is_well_known: Set to true ONLY if '{brand_name}' is a widely recognized national or multinational brand with established guidelines, recognizable logos, and clear visual identifiers in India (e.g., McDonald's, KFC, Coca-Cola, Tanishq, Puma, Horlicks, Swiggy, Amazon). Set to false if the brand is highly localized, a minor regional outlet, or obscure to prevent generating hallucinated logos.
+    2. primary_colors: Identify their exact 2 primary brand colors (e.g., McDonald's is "Golden Yellow and Crimson Red", Tanishq is "Deep Maroon and Gold").
+    3. THE PITCH / CREATIVE HOOK: Carefully scan the provided text brief for sections titled "The Creative Hook", "The Big Idea", "Solution A", or "Solution B". Identify the specific creative idea or product deal we are pitching to this brand (e.g., McDonald's "Warmth, Shared" sharing packs, or Sweet Karam Coffee's "Janaki Paati's traditional snacks").
+    4. CREATE THE VISUAL SCENE: Combine the identified creative pitch/hook with premium, minimalist visual staging. Describe a clean, high-end scene centered on the proposed campaign's core concept. Examples:
+       - If McDonald's "Warmth, Shared" hook is pitched: "A high-quality close-up of a McDonald's Sharing Pack on a clean wooden dining table inside an apartment, featuring hot McSpicy burgers, crispy golden french fries, and cold beverages, with soft warm ambient lighting."
+       - If Sweet Karam Coffee "Janaki Paati's Kitchen" hook is pitched: "An authentic, warm illustration or styled photo of a traditional Indian grandmother (Paati) smiling, next to neatly arranged copper plates of traditional Indian sweets and filter coffee, set against a clean, warm-toned kitchen background."
+       Ensure the description is highly specific to the proposed pitch, clean, authentic, and photorealistic.
+    5. CREATE A SLOGAN: Extract the exact slogan proposed in the brief's creative hook, or draft a short, impactful 2-to-3 word slogan that matches the strategic pitch (e.g., "Warmth, Shared", "Tradition Delivered"). Do not invent long sentences.
     
     Return ONLY a valid JSON object:
     {{
@@ -1713,9 +1710,9 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
 
 def generate_creative_with_gemini_image(gemini_client, brand_name, industry, visual_context):
     """
-    Acts as the Photographer/Artist: Uses 'gemini-3-pro-image-preview' to generate
-    photorealistic physical mockups representing a standard Indian residential society,
-    including a uniformed security guard, iron sliding gate, and concrete driveway.
+    Acts as the Photographer/Artist: Uses 'gemini-3-pro-image-preview' to render
+    photorealistic mockups that visually display the sales pitch extracted from the brief.
+    Ensures proper environmental scaling and a realistic Indian society setting.
     """
     if not visual_context:
         print(f"  Skipping image generation for {brand_name}: Visual context was not extracted.")
@@ -1754,7 +1751,7 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
       - The board displays a clean, professional ad layout of '{brand_name}' featuring the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
 
     - MIDDLE SECTION — LIFT BRANDING
-      - Inside a modern, high-end residential elevator with brushed-steel metallic walls.
+      - Inside a modern, residential elevator with brushed-steel metallic walls.
       - A vertical A3 rectangular poster inside a clean, thin acrylic frame with small metallic corner standoffs is mounted flush on the steel wall.
       - The poster displays the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
       - Captured with slightly angled perspective, showing realistic glass depth and soft elevator downlighting reflections on the steel surface.
@@ -1798,7 +1795,6 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     except Exception as e:
         print(f"   Error generating image with gemini-3-pro-image-preview: {e}")
         return None
-
 # --- Email Sending ---
 def create_email_message_with_image(sender, to_emails_list, subject, message_text_html, image_bytes=None):
     """Creates an email message using the proven EmailMessage logic from outbound script."""
