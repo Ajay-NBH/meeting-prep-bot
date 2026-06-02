@@ -1659,11 +1659,16 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
              return "Error: Gemini API quota likely exceeded. Please check your Google Cloud/AI Studio quotas."
         return f"Error: Exception during Gemini call: {e}"
 # =====================================================================
-# NEW: IMAGE GENERATION WORKFLOW (ART DIRECTOR & ARTIST)
+# UNIFIED HIGH-QUALITY IMAGE GENERATION WORKFLOW (IMAGEN 3.0 API)
 # =====================================================================
 def get_brand_visual_context(gemini_client, brand_name, industry, generated_brief=""):
-    """The Art Director: Combines recent brand campaigns with current seasons/trends for a creative pitch."""
-    if not gemini_client: return None
+    """
+    Acts as the Creative Director: Extracts brand colors, campaign themes,
+    and devises a clean, minimalist visual scene with limited slogan text.
+    Uses Google search grounding to find real brand insights.
+    """
+    if not gemini_client: 
+        return None
     
     prompt = f"""
     You are an expert Brand Visual Strategist and Creative Director at a top ad agency. Research the brand '{brand_name}' (Industry: {industry}) in India.
@@ -1674,19 +1679,23 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
     ---
     
     Task:
-    1. Identify if '{brand_name}' is a well-known brand. If obscure, set "is_well_known" to false.
-    2. Identify their primary 2 brand colors.
-    3. TIMELY CREATIVE HOOK: Identify the current season, upcoming major Indian festival, or ongoing mega-trend (e.g., Summer, Monsoon, Diwali, IPL, World Cup, Back-to-School, Wedding Season).
-    4. BRAND'S RECENT FOCUS: Identify a recent campaign, core product, or theme associated with '{brand_name}'.
-    5. CREATE THE VISUAL SCENE: Merge the 'Timely Trend' and the 'Brand Focus' into a highly creative, dynamic visual concept for an advertisement. (e.g., If Nike + Monsoon: "A sleek running shoe splashing through a neon-lit puddle with rain deflecting off it"). Keep it highly descriptive for an image generator. Focus purely on the visual imagery.
-    6. CREATE A SLOGAN: Write a catchy, meaningful 2-to-5 word advertising slogan/quote that ties this together (e.g., "Conquer the Storm", "Unleash Your Summer"). DO NOT write long sentences.
+    1. is_well_known: Set to true if the brand is recognizable in India, or false if obscure.
+    2. primary_colors: Identify their exact 2 primary brand colors (e.g., "Warm Amber and Dark Espresso Brown").
+    3. TIMELY CREATIVE HOOK: Identify the current season, upcoming major Indian festival, or ongoing trend relevant to India (e.g., Monsoon, Diwali, Summer, Back-to-School, Wedding Season).
+    4. BRAND'S RECENT FOCUS: Identify a recent campaign theme, core product focus, or authentic imagery associated with the brand in India.
+    5. CREATE THE VISUAL SCENE: Combine the 'Timely Trend' and the 'Brand Focus' into a premium, minimalist visual scene for an advertisement. Focus on real-world, elegant elements arranged naturally. Examples:
+       - "A premium traditional copper plate with clean South Indian snacks arranged elegantly next to a glass of hot filter coffee with natural vapor rising, warm daylight lighting."
+       - "An elegant skincare bottle next to fresh dew-covered flowers on a clean, textured stone surface under soft natural lighting."
+       - "A sleek running shoe splashing through water during monsoon, with clean reflections and soft ambient light."
+       Avoid busy, chaotic, or over-saturated cartoonish scenes. Keep the focus clean, realistic, and high-end.
+    6. CREATE A SLOGAN: Write a catchy, meaningful 2-to-3 word advertising slogan/quote that fits the visual scene (e.g., "Taste of Tradition", "Freshness First", "Step into Summer"). DO NOT write long sentences or multiple slogans.
     
     Return ONLY a valid JSON object:
     {{
         "is_well_known": true/false,
-        "primary_colors": "e.g., Blue and White",
-        "visual_scene": "e.g., 'A sleek running shoe splashing through a neon-lit puddle with rain deflecting off it'",
-        "short_slogan": "e.g., 'Conquer the Storm'"
+        "primary_colors": "...",
+        "visual_scene": "...",
+        "short_slogan": "..."
     }}
     """
     
@@ -1703,7 +1712,10 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
         return {"is_well_known": False}
 
 def generate_creative_with_gemini_image(gemini_client, brand_name, industry, visual_context):
-    """The Artist: Generates the 3-in-1 vertical composite featuring the dynamic trend-based visual and slogan."""
+    """
+    Acts as the Photographer/Artist: Uses the dedicated 'imagen-3.0-generate-002' model 
+    for authentic physical texture, realistic lighting, and premium photorealistic mockups.
+    """
     if not visual_context.get("is_well_known"):
         print(f"  Skipping image generation for {brand_name}: Brand too obscure.")
         return None
@@ -1713,167 +1725,61 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     short_slogan = visual_context.get("short_slogan", "Exclusive Offer")
     
     image_prompt = f"""
-    Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom.
-    Each section must look like a candid smartphone photo taken inside a standard Indian residential society. Use natural daylight.
+    Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom, separated by thin, clean white lines.
+    Style: Warm, high-end architectural and lifestyle photography. Focus on realistic physical textures (matte poster paper, polished steel elevator walls, brushed iron gates, clean smartphone screen glass). Use natural daylight and generate authentic soft shadows.
+    AVOID: Over-saturated, cartoonish AI styles, chaotic layouts, or unnecessary text banners.
 
     # ADVERTISEMENT CREATIVE BRIEF:
     Brand: '{brand_name}' | Industry: '{industry}' | Brand Colors: {colors}
     Dynamic Visual Scene: "{visual_scene}"
     Campaign Slogan: "{short_slogan}"
 
-    # CRITICAL TEXT & DESIGN RULES:
-    1. The banners must showcase the "Dynamic Visual Scene" as a high-end, creative, and eye-catching advertisement.
-    2. TEXT LIMITATION: ONLY write the exact Campaign Slogan: "{short_slogan}".
-    3. DO NOT write long paragraphs. DO NOT write useless meta-text like "Gate Banner", "Ad for you", or "Created for you". Keep the text meaningful and limited strictly to the slogan.
+    # CRITICAL TEXT RULES:
+    1. The only text allowed on the advertising panels is the brand name '{brand_name}' and the short slogan "{short_slogan}".
+    2. Render the text in a clean, modern, and elegant font integrated naturally into the ad layouts.
+    3. DO NOT write labels, annotations, or metadata on the image (such as "Gate Banner", "Lift Mockup", or "Created for you").
 
     - TOP SECTION — GATE BRANDING
-      - A standard Indian apartment complex entrance. Black wrought-iron sliding gate.
-      - A 4ft x 3ft horizontal ACP board displaying the '{brand_name}' ad, mounted on the gate.
-      - The ad features the dynamic Visual Scene ("{visual_scene}") and prints the slogan "{short_slogan}" in bold, stylish typography.
-      - Background: Trees and apartment buildings visible naturally. Watchman or resident in background.
+      - A physical, high-resolution 4ft x 3ft horizontal ACP board mounted cleanly onto a classic wrought-iron entrance gate of a premium Indian residential society.
+      - The board features the campaign visual scene ("{visual_scene}") using the brand colors {colors}, and displays the slogan "{short_slogan}" in an elegant typographic layout.
+      - Staged in soft, natural outdoor daylight, with trees and a building exterior visible softly out of focus in the background.
 
     - MIDDLE SECTION — LIFT BRANDING
-      - Brushed stainless steel elevator interior with vertical metallic grain texture.
-      - An A3 size printed poster in a clean acrylic frame showing the '{brand_name}' ad, mounted on the wall.
-      - The poster features the Visual Scene ("{visual_scene}") and the slogan "{short_slogan}".
-      - Background: Elevator buttons, CCTV camera in corner.
+      - Staged inside a modern residential elevator with elegant brushed-steel walls.
+      - An A3-size printed paper poster is displayed inside a clean, thin acrylic frame mounted flush on the steel wall.
+      - The poster features the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+      - Captured under soft elevator downlighting, showing subtle, realistic metallic reflections on the walls.
 
-    - BOTTOM SECTION — DIGITAL IN-APP (PAC)
-      - A clean digital UI mockup of the NoBrokerHood mobile app on a smartphone screen.
-      - APP HEADER: White header with "Back" button icon and title "My Visitors".
-      - THE PAC OVERLAY: A white card overlaying the screen. Bold black text: "Pre approval created". Small grey text: "for your {brand_name} request".
-      - THE AD CREATIVE: Below the notification card, a high-resolution square ad for '{brand_name}' featuring the Visual Scene ("{visual_scene}") and the slogan "{short_slogan}".
-      - BACKGROUND: The apartment list behind the overlay should be dimmed.
-
-    # LAYOUT RULES:
-    - Show all 3 panels vertically (top gate, middle lift, bottom in-app) separated by a thin white line.
-    - The '{brand_name}' branding and visual scene MUST look like an expensive, trendy agency campaign.
-    - No NoBrokerHood logos on any physical surfaces. Only '{brand_name}' branding visible on the ad panels.
+    - BOTTOM SECTION — DIGITAL IN-APP MOCKUP (PAC)
+      - A close-up shot of a smartphone held in a hand, displaying a clean mobile application interface.
+      - At the top of the screen, a white overlay card reads: "Pre approval created for your {brand_name} request" in a neat system font.
+      - Below this notification card, a high-resolution square advertisement banner is cleanly embedded, showcasing the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+      - The interface is sharp and displays natural screen glass reflections.
     """
     
-    print(f"  🎨 Generating 3-in-1 Gemini Image creative for {brand_name} (Industry: {industry})...")
+    print(f"  🎨 Generating high-fidelity visual creative for {brand_name} using Imagen 3...")
     
     try:
-        response = gemini_client.models.generate_content(
-            model="gemini-3-pro-image-preview",
-            contents=image_prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"]
+        # Utilizing Google GenAI SDK dedicated image generator
+        result = gemini_client.models.generate_images(
+            model='imagen-3.0-generate-002',
+            prompt=image_prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                output_mime_type="image/jpeg",
+                aspect_ratio="3:4" # Vertical layout format for email
             )
         )
 
-        if response.candidates:
-            for part in response.candidates[0].content.parts:
-                if part.inline_data and part.inline_data.mime_type.startswith("image/"):
-                    print(f"  ✅ Image generated successfully for {brand_name}!")
-                    return part.inline_data.data
+        if result and result.generated_images:
+            # Extract image bytes directly from native image response object
+            print(f"  ✅ Creative image successfully generated for {brand_name}!")
+            return result.generated_images[0].image.image_bytes
 
-        print(f"   No image data found in response for {brand_name}.")
+        print(f"   No image data returned from Imagen 3 for {brand_name}.")
         return None
     except Exception as e:
-        print(f"   Error generating image with Gemini: {e}")
-        return None
-
-# =========================================
-# NEW V2 TESTING FUNCTIONS PASTED HERE
-# =========================================
-def get_brand_visual_context_v2(gemini_client, brand_name, industry, generated_brief=""):
-    """V2 Art Director: Hunts for actual live campaigns and dynamically selects Island vs Gate banners."""
-    if not gemini_client: return None
-    
-    prompt = f"""
-    You are an elite Brand Visual Strategist at a top ad agency. Research '{brand_name}' (Industry: {industry}) in India.
-    
-    Task:
-    1. is_well_known: True if the brand is recognizable, False if obscure.
-    2. primary_colors: Identify their exact 2 primary brand colors.
-    3. CURRENT LIVE CAMPAIGN: Search for their latest 2024/2025/2026 marketing campaign in India (e.g., if Puma, it's "Go Wild"). What is the core theme and official slogan?
-    4. VISUAL SCENE: Create a highly creative visual scene based strictly on this *actual live campaign*.
-    5. SHORT SLOGAN: Provide the exact 2-to-5 word slogan from their current campaign.
-    6. THIRD ASSET: Based on the brand's nature, choose ONE: "Island Banner (Horizontal In-App Digital Ad)" OR "Physical Gate Banner".
-    
-    Return ONLY a valid JSON object:
-    {{
-        "is_well_known": true/false,
-        "primary_colors": "...",
-        "campaign_name": "...",
-        "visual_scene": "...",
-        "short_slogan": "...",
-        "third_asset": "..."
-    }}
-    """
-    
-    try:
-        grounding_tool = types.Tool(google_search=types.GoogleSearch())
-        config = types.GenerateContentConfig(temperature=0.2, tools=[grounding_tool]) 
-        
-        response = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
-        result_text = response.text.strip()
-        result_text = re.sub(r'```json\s*|\s*```', '', result_text).strip()
-        return json.loads(result_text)
-    except Exception as e:
-        print(f"  V2 Visual context extraction failed for {brand_name}: {e}")
-        return {"is_well_known": False}
-
-def generate_creative_with_gemini_image_v2(gemini_client, brand_name, industry, visual_context):
-    """V2 Artist: Generates photorealistic mockups with Island Banners and REALISTIC Inside-Lift Posters."""
-    if not visual_context.get("is_well_known"):
-        return None
-        
-    colors = visual_context.get("primary_colors", "vibrant colors")
-    visual_scene = visual_context.get("visual_scene", "modern lifestyle imagery")
-    short_slogan = visual_context.get("short_slogan", "Exclusive Offer")
-    third_asset = visual_context.get("third_asset", "Island Banner (Horizontal In-App Digital Ad)")
-    
-    # --- FIXED LIFT SECTION: Forced back to the realistic inside-elevator framed poster ---
-    lift_prompt = f"- MIDDLE SECTION — LIFT BRANDING: Inside a modern brushed-steel residential elevator. A premium A3 printed poster in a clean, clear acrylic frame is mounted on the metallic wall. The poster shows a highly creative '{brand_name}' ad featuring the Visual Scene and slogan '{short_slogan}'. The lighting is natural elevator downlighting. It must look like a real, untouched photograph of a physical poster."
-
-    # 2. Construct the Third Asset Section based on LLM choice
-    if "Island" in third_asset:
-        asset_prompt = f"- TOP SECTION — DIGITAL ISLAND BANNER: A crisp, horizontal digital web/app banner design (aspect ratio roughly 3:1). It features a highly creative, vivid digital illustration or photo-composite of the Visual Scene. It includes the '{brand_name}' branding, the bold slogan '{short_slogan}', and a small 'Explore Now' CTA button. Rich {colors} colors. Professional digital UI design style."
-    else:
-        asset_prompt = f"- TOP SECTION — GATE BANNER: A standard Indian apartment complex entrance with a black wrought-iron sliding gate. A 4ft x 3ft physical ACP board is mounted on the gate displaying the '{brand_name}' ad. It features the Visual Scene and slogan '{short_slogan}'. Natural daylight, slightly weathered real-world look."
-
-    # 3. Assemble the Master Prompt
-    image_prompt = f"""
-    Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom, separated by thin white lines.
-    Style: Architectural photography combined with professional advertising mockups. DO NOT make it look like hyper-saturated, cartoonish AI art. 
-
-    # ADVERTISEMENT CREATIVE BRIEF:
-    Brand: '{brand_name}' | Colors: {colors}
-    Dynamic Visual Scene: "{visual_scene}"
-    Campaign Slogan: "{short_slogan}"
-
-    # CRITICAL TEXT RULES:
-    ONLY write the exact Campaign Slogan: "{short_slogan}". Do not invent other random text or gibberish.
-
-    {asset_prompt}
-
-    {lift_prompt}
-
-    - BOTTOM SECTION — IN-APP PAC MOCKUP:
-      - A clean digital UI mockup of a mobile app on a smartphone screen held by a hand.
-      - A white overlay card reads in bold black text: "Pre approval created". Small grey text: "for your {brand_name} request".
-      - Below the text, a high-resolution square ad for '{brand_name}' featuring the Visual Scene and slogan '{short_slogan}'.
-    """
-    
-    print(f"  🎨 Generating V2 Dynamic Image for {brand_name} | Assets: Realistic Lift Poster & {third_asset}")
-    
-    try:
-        response = gemini_client.models.generate_content(
-            model="gemini-3-pro-image-preview", 
-            contents=image_prompt,
-            config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"])
-        )
-
-        if response.candidates:
-            for part in response.candidates[0].content.parts:
-                if part.inline_data and part.inline_data.mime_type.startswith("image/"):
-                    print(f"  ✅ V2 Image generated successfully!")
-                    return part.inline_data.data
-        return None
-    except Exception as e:
-        print(f"   Error generating V2 image: {e}")
+        print(f"   Error generating image with Imagen 3: {e}")
         return None
 
 # --- Email Sending ---
@@ -2719,32 +2625,33 @@ def main():
         if ENABLE_IMAGE_GENERATION:
             if generated_brief and "Error:" not in generated_brief:
                 try:
-                    # --- 🛡️ SAFE TESTING LOGIC 🛡️ ---
-                    # Check if the word "testing" is in the meeting title (case-insensitive)
-                    is_test_meeting = "testing" in meeting_data['title'].lower()
-
-                    if is_test_meeting:
-                        print(f"  🧪 V2 TEST MODE: 'Testing' found in title. Generating highly creative dynamic image for '{meeting_data['title']}'...")
-                        # THE V2 ART DIRECTOR (New Island/Wrap Logic)
-                        visual_context = get_brand_visual_context_v2(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], generated_brief)
-                        if visual_context:
-                            # THE V2 ARTIST (New Image Prompt)
-                            creative_image_bytes = generate_creative_with_gemini_image_v2(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], visual_context)
+                    print(f"  🎨 Generating strategic mockup image for '{meeting_data['title']}'...")
                     
+                    # Extract structured visual context from the text brief details (Art Director Role)
+                    visual_context = get_brand_visual_context(
+                        gemini_llm_client, 
+                        meeting_data['brand_name'], 
+                        meeting_data['industry'], 
+                        generated_brief
+                    )
+                    
+                    if visual_context:
+                        # Render the high-resolution creative image layout (Artist Role)
+                        creative_image_bytes = generate_creative_with_gemini_image(
+                            gemini_llm_client, 
+                            meeting_data['brand_name'], 
+                            meeting_data['industry'], 
+                            visual_context
+                        )
                     else:
-                        print(f"  🎨 LIVE MODE: Generating standard strategic image for '{meeting_data['title']}'...")
-                        # THE V1 ART DIRECTOR (Original Gate/Poster Logic)
-                        visual_context = get_brand_visual_context(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], generated_brief)
-                        if visual_context:
-                            # THE V1 ARTIST (Original Image Prompt)
-                            creative_image_bytes = generate_creative_with_gemini_image(gemini_llm_client, meeting_data['brand_name'], meeting_data['industry'], visual_context)
+                        print(f"  Could not derive visual context for '{meeting_data['brand_name']}'.")
                 
                 except Exception as e:
                     print(f"  Warning: Failed to generate creative image: {e}")
             else:
                 print(f"  ⚠️ Brief generation failed. Skipping image generation.")
         else:
-            print(f"  ℹ️ Image Generation is completely disabled in settings. Skipping...")
+            print(f"  ℹ️ Image Generation is disabled in settings. Skipping...")
 
         FEEDBACK_FORM_URL = "https://forms.gle/Ho9XLKsuGYhWBrBw7"
 
