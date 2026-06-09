@@ -28,7 +28,12 @@ from data_config import sheet_masters, hierarchy, column_index
 
 # For parsing Office documents if downloaded from Drive
 from pptx import Presentation
+from pptx.util import Inches
 import openpyxl
+
+# Additional helper imports for handling media uploads and memory streams in testing mode
+from googleapiclient.http import MediaIoBaseUpload
+import io
 
 # Load the .env file
 env = os.getenv("ENV", "dev")
@@ -2159,6 +2164,121 @@ def write_into_doc(docs_service, doc_id, text):
         print("An error occured while writing into google doc")
 
 
+# =====================================================================
+# PPT GENERATION HELPER FUNCTIONS (TESTING MODE ONLY)
+# =====================================================================
+def generate_custom_pitch_deck(master_pptx_stream, brand_name, meeting_date_str, app_mockup_bytes=None, lift_mockup_bytes=None):
+    """
+    Opens the master PowerPoint template byte stream, modifies the title slide placeholders,
+    replaces geometric placeholder vectors with AI-generated visual mockups,
+    and returns the finalized presentation as an exportable byte stream.
+    """
+    try:
+        prs = Presentation(master_pptx_stream)
+        
+        # --- 1. Modify Text on Title Slide (Slide 1) ---
+        title_slide = prs.slides[0]
+        for shape in title_slide.shapes:
+            if shape.has_text_frame:
+                text_frame = shape.text_frame
+                for paragraph in text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        if "{{CLIENT_BRAND_NAME}}" in run.text:
+                            run.text = run.text.replace("{{CLIENT_BRAND_NAME}}", brand_name)
+                        if "{{MEETING_DATE}}" in run.text:
+                            run.text = run.text.replace("{{MEETING_DATE}}", meeting_date_str)
+                            
+        # --- 2. Replace Slide Placeholders with Mockup Images ---
+        for slide_idx, slide in enumerate(prs.slides):
+            # Target Slide 12 (0-indexed index 11) for App Mockup
+            if slide_idx == 11 and app_mockup_bytes:
+                replace_shape_with_image(slide, "Placeholder_App_PAC", app_mockup_bytes)
+                
+            # Target Slide 22 (0-indexed index 21) for Lift Mockup
+            elif slide_idx == 21 and lift_mockup_bytes:
+                replace_shape_with_image(slide, "Placeholder_Lift_Ad", lift_mockup_bytes)
+                
+        # Save presentation back into a memory-based stream
+        output_stream = io.BytesIO()
+        prs.save(output_stream)
+        output_stream.seek(0)
+        return output_stream.getvalue()
+        
+    except Exception as e:
+        print(f"  [PPT ERROR] Error modifying presentation template: {e}")
+        return None
+
+def replace_shape_with_image(slide, placeholder_name, image_bytes):
+    """
+    Finds a shape by its specific name, extracts its layout dimensions,
+    removes it from the presentation, and places the mockup in its place.
+    """
+    for shape in list(slide.shapes):
+        if shape.name == placeholder_name:
+            left = shape.left
+            top = shape.top
+            width = shape.width
+            height = shape.height
+            
+            # Programmatically strip out vector placeholder element
+            sp = shape._element
+            sp.getparent().remove(sp)
+            
+            # Place the visual asset at the identical coordinates
+            image_stream = io.BytesIO(image_bytes)
+            slide.shapes.add_picture(image_stream, left, top, width, height)
+            break
+
+def generate_isolated_mockup(gemini_client, brand_name, colors, visual_scene, slogan, placement_type):
+    """
+    Generates a single, clean visual mockup corresponding to the placement type (App or Lift)
+    using the Gemini image model.
+    """
+    if not gemini_client:
+        return None
+        
+    # Build isolated context prompt for the targeted placement
+    if placement_type == "App":
+        scene_prompt = f"""
+        Create a clean digital in-app mockup. 
+        A close-up shot of a smartphone held naturally in a hand. 
+        The screen displays the NoBrokerHood app UI.
+        Directly in the center of the UI is a high-resolution, sharp square ad banner for the brand '{brand_name}' using colors: {colors}.
+        The ad displays the scene: "{visual_scene}" with the slogan "{slogan}".
+        Style: Photorealistic, modern UI, direct daylight. No text overlays outside the phone screen.
+        """
+    else:  # Lift ad
+        scene_prompt = f"""
+        Create a vertical advertisement poster framed inside a clean residential elevator.
+        The elevator has modern, brushed-steel walls.
+        A vertical frame displays an ad poster for the brand '{brand_name}' using colors: {colors}.
+        The ad displays the scene: "{visual_scene}" with the slogan "{slogan}".
+        Style: Photorealistic, clean perspective, natural metallic textures.
+        """
+        
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-3-pro-image-preview",
+            contents=scene_prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"]
+            )
+        )
+        if response.candidates:
+            for part in response.candidates[0].content.parts:
+                if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                    raw_data = part.inline_data.data
+                    if isinstance(raw_data, str):
+                        raw_data = base64.b64decode(raw_data)
+                    elif isinstance(raw_data, bytes) and not raw_data.startswith(b'\xff\xd8\xff'):
+                        raw_data = base64.b64decode(raw_data)
+                    return raw_data
+        return None
+    except Exception as e:
+        print(f"  [IMAGE ERROR] Failed to generate isolated {placement_type} mockup: {e}")
+        return None
+
+
 def get_sheet_owner_from_email(email):
     hcy = []
     if email in sheet_masters:
@@ -2634,6 +2754,7 @@ def main():
 
         # 2. IMAGE GENERATION (NOW LIVE FOR ALL MEETINGS)
         creative_image_bytes = None
+        ppt_share_link = None # Tracks PPT GDrive link for test cases
 
         if ENABLE_IMAGE_GENERATION:
             if generated_brief and "Error:" not in generated_brief:
@@ -2649,13 +2770,85 @@ def main():
                     )
                     
                     if visual_context:
-                        # Render the high-resolution creative image layout (Artist Role)
+                        # Render the standard 3-in-1 creative image layout for email inclusion
                         creative_image_bytes = generate_creative_with_gemini_image(
                             gemini_llm_client, 
                             meeting_data['brand_name'], 
                             meeting_data['industry'], 
                             visual_context
                         )
+                        
+                        # =====================================================================
+                        # SAFE TESTING GATE FOR AUTOMATED PPT GENERATION
+                        # =====================================================================
+                        is_testing_mode = "testing" in meeting_data.get('title', '').lower()
+                        
+                        if is_testing_mode:
+                            print(f"  🧪 [TESTING MODE ACTIVE] Initializing PowerPoint Generation...")
+                            try:
+                                # Your real Google Drive PowerPoint Template File ID
+                                ppt_template_file_id = "16Wrw54h_NrHKvxwdnHI1KWEm-mL2DMWR"
+                                
+                                # Fetch visual parameters from our visual director
+                                colors = visual_context.get("primary_colors", "vibrant colors")
+                                visual_scene = visual_context.get("visual_scene", "modern lifestyle imagery")
+                                short_slogan = visual_context.get("short_slogan", "Exclusive Offer")
+                                
+                                # Generate isolated layouts specifically to fit presentation placeholders
+                                print("  🧪 Generating isolated App banner mockup for PPT Slide 12...")
+                                app_bytes = generate_isolated_mockup(gemini_llm_client, meeting_data['brand_name'], colors, visual_scene, short_slogan, "App")
+                                
+                                print("  🧪 Generating isolated Elevator poster mockup for PPT Slide 22...")
+                                lift_bytes = generate_isolated_mockup(gemini_llm_client, meeting_data['brand_name'], colors, visual_scene, short_slogan, "Lift")
+                                
+                                # Download the master PPTX file from Google Drive
+                                print("  🧪 Downloading Master PowerPoint Template from Google Drive...")
+                                request_pptx = drive_service.files().get_media(fileId=ppt_template_file_id)
+                                ppt_stream = io.BytesIO()
+                                downloader_pptx = MediaIoBaseDownload(ppt_stream, request_pptx)
+                                done_pptx = False
+                                while not done_pptx:
+                                    _, done_pptx = downloader_pptx.next_chunk()
+                                ppt_stream.seek(0)
+                                
+                                # Modify template text & insert the new visuals
+                                print("  🧪 Modifying PowerPoint template with customized branding...")
+                                customized_deck_bytes = generate_custom_pitch_deck(
+                                    ppt_stream,
+                                    brand_name=meeting_data['brand_name'],
+                                    meeting_date_str=meeting_data['start_time_str'],
+                                    app_mockup_bytes=app_bytes,
+                                    lift_mockup_bytes=lift_bytes
+                                )
+                                
+                                if customized_deck_bytes:
+                                    # Upload the finalized deck to the Brief Folder on Drive
+                                    print("  🧪 Uploading customized Pitch Deck to Google Drive folder...")
+                                    ppt_metadata = {
+                                        'name': f"NBH Customized Deck - {meeting_data['brand_name']}.pptx",
+                                        'parents': [BRIEF_FOLDER_ID]
+                                    }
+                                    media_upload = MediaIoBaseUpload(
+                                        io.BytesIO(customized_deck_bytes), 
+                                        mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                                        resumable=True
+                                    )
+                                    uploaded_deck = drive_service.files().create(
+                                        body=ppt_metadata, 
+                                        media_body=media_upload, 
+                                        fields='id'
+                                    ).execute()
+                                    
+                                    ppt_share_link = f"https://docs.google.com/presentation/d/{uploaded_deck.get('id')}"
+                                    print(f"  🧪 [TESTING SUCCESS] Deck generated successfully! Link: {ppt_share_link}")
+                                    
+                            except Exception as ppt_err:
+                                # Safety handler to ensure errors do not interrupt production brief generation
+                                print(f"  ⚠️ [TESTING EXCEPTION] PowerPoint generation was bypassed: {ppt_err}")
+                        else:
+                            print("  Bypassing PowerPoint generation (Standard live mode).")
+                        # =====================================================================
+                        
                     else:
                         print(f"  Could not derive visual context for '{meeting_data['brand_name']}'.")
                 
@@ -2678,6 +2871,24 @@ def main():
     <a href="{FEEDBACK_FORM_URL}">👉 Click Here to Fill the Feedback Form</a></p>
 </div>
 """
+
+        # Append PPT links for test users in the email body
+        if ppt_share_link:
+            ppt_header = f"""
+<div style="margin-bottom: 25px; background-color: #e6fffa; border: 1px solid #319795; padding: 20px; border-radius: 8px;">
+    <h3 style="color: #234e52; font-size: 16px; margin-top: 0; padding-bottom: 8px; border-bottom: 1px solid #b2f5ea;">
+        📊 🧪 TEST MODE ACTIVE: Customized Presentation Generated
+    </h3>
+    <p style="font-size: 14px; color: #2d3748; margin-bottom: 12px;">
+        A customized PowerPoint presentation deck has been assembled for this brand. 
+        It contains dynamic ad mockups designed specifically for Slide 12 and Slide 22.
+    </p>
+    <a href="{ppt_share_link}" style="display: inline-block; background-color: #319795; color: white; padding: 10px 18px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 13px;">
+        👉 Open Pitch Deck on Google Slides
+    </a>
+</div>
+"""
+            generated_brief = ppt_header + generated_brief
 
         # 3. Append the footer to the generated brief
         # Only add it if the brief was generated successfully (no errors)
