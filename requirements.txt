@@ -14,3 +14,4 @@ packaging
 Flask==3.0.0
 gunicorn==21.2.0
 google-cloud-pubsub==2.19.0
+python-pptx>=0.6.21
