@@ -259,78 +259,121 @@ def is_brand_match(brand1, brand2):
         return True
         
     return False
-# ===================================================================================
-# ========== NEW FUNCTION 1: Search for LinkedIn Profile ==========
-def search_linkedin_profile(person_name, company_name, gemini_llm_client):
+# ========== UPGRADED FUNCTION 1: Search for LinkedIn & Recent Posts ==========
+def search_attendee_intel(email, raw_name, company_name, gemini_llm_client):
     """
-    Uses Gemini's Google Search to find a LinkedIn URL with improved query logic.
+    Intelligently splits email prefixes into real names, finds LinkedIn profiles, 
+    and searches for recent brand-related posts/articles by the person.
     """
     if not gemini_llm_client:
         return None
     
-    # Simpler, broader search prompt that allows the LLM to find the best match
-    search_prompt = f"Find the official LinkedIn profile URL for {person_name} who works at {company_name} in India. Search for their current role. Return ONLY the URL."
+    email_prefix = email.split('@')[0] if '@' in email else email
+    domain = email.split('@')[1] if '@' in email else ""
+
+    search_prompt = f"""
+    You are an expert OSINT researcher profiling a meeting attendee.
+    Email Prefix: '{email_prefix}'
+    Domain: '{domain}'
+    Company Name: '{company_name}' in India.
+    Raw Name from calendar: '{raw_name}'
+
+    Task 1: Deduce the person's likely full human name from the email prefix (e.g., 'vikramadityauppal' becomes 'Vikram Aditya Uppal').
+    Task 2: Use Google Search to find their exact official LinkedIn profile URL.
+    Task 3: Search if this specific person has recently posted on LinkedIn, or been featured in articles/news regarding '{company_name}'.
+
+    CRITICAL ANTI-HALLUCINATION RULES:
+    1. DO NOT guess, invent, or construct URLs. 
+    2. If the Google Search tool does not return a definitive, working URL for THIS EXACT PERSON, you MUST return null for that field.
+    3. Do not return company LinkedIn pages, only the individual person's profile.
+
+    Return ONLY a valid JSON object in this exact format:
+    {{
+        "inferred_name": "The properly formatted full name",
+        "linkedin_url": "https://www.linkedin.com/in/... or null",
+        "recent_post_url": "https://... or null",
+        "post_context": "Short 3-5 word description of the post or null"
+    }}
+    """
 
     grounding_tool = types.Tool(google_search=types.GoogleSearch())
+    
+    # Temperature 0.0 + JSON MIME type to force strict, hallucination-free output
     config = types.GenerateContentConfig(
         temperature=0.0,
-        tools=[grounding_tool]
+        tools=[grounding_tool],
+        response_mime_type="application/json"
     )
     
     try:
         response = gemini_llm_client.models.generate_content(
-            model="gemini-2.0-flash", # Use 2.0 for better search grounding
+            model="gemini-2.5-flash", 
             contents=search_prompt,
             config=config
         )
         
         result_text = response.text.strip()
+        data = json.loads(result_text)
         
-        # Flexible URL pattern matching for all LinkedIn variations
-        url_pattern = r'https?://(?:[a-z]+\.)?linkedin\.com/in/[a-zA-Z0-9%_-]+'
-        urls = re.findall(url_pattern, result_text)
-        
-        return urls[0] if urls else None
+        # PYTHON-SIDE VALIDATION: Catch any LLM hallucinations
+        # 1. Validate LinkedIn URL
+        if data.get('linkedin_url'):
+            if 'linkedin.com/in/' not in data['linkedin_url'].lower():
+                data['linkedin_url'] = None # Reject if it's a company page or fake link
+                
+        # 2. Validate Post URL
+        if data.get('recent_post_url'):
+            if not str(data['recent_post_url']).startswith('http'):
+                data['recent_post_url'] = None
+                data['post_context'] = None
+            
+        return data
         
     except Exception as e:
-        print(f"  Error searching LinkedIn for {person_name}: {e}")
-        return None
+        print(f"  Error searching Intel for {email}: {e}")
+        return {
+            "inferred_name": raw_name.title() if raw_name else email_prefix.title(),
+            "linkedin_url": None,
+            "recent_post_url": None,
+            "post_context": None
+        }
 
 
-# ========== NEW FUNCTION 2: Get LinkedIn for All Attendees ==========
+# ========== UPGRADED FUNCTION 2: Get LinkedIn & Posts for All Attendees ==========
 def get_brand_attendees_linkedin_info(brand_attendees_list, brand_name, gemini_llm_client):
     """
-    For each brand attendee, search for their LinkedIn profile.
-    Returns a list with LinkedIn URLs added.
+    For each brand attendee, search for their LinkedIn profile and recent activity.
+    Returns a list with clean names, LinkedIn URLs, and Post URLs added.
     """
-    attendees_with_linkedin = []
+    attendees_with_intel = []
     
     for attendee in brand_attendees_list:
         attendee_name = attendee.get('name', '')
         attendee_email = attendee.get('email', '')
         
-        # Clean up name if it looks like an email
-        if '@' in attendee_name:
-            # Convert "john.doe@example.com" to "John Doe"
-            attendee_name = attendee_email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
+        print(f"    🔍 Searching OSINT Intel for: {attendee_email} at {brand_name}")
         
-        print(f"    🔍 Searching LinkedIn for: {attendee_name} at {brand_name}")
+        # Call the new intelligent search function
+        intel_data = search_attendee_intel(attendee_email, attendee_name, brand_name, gemini_llm_client)
         
-        # Do the actual LinkedIn search
-        linkedin_url = search_linkedin_profile(attendee_name, brand_name, gemini_llm_client)
-        
+        # Fallback if API fails completely
+        if not intel_data:
+            intel_data = {"inferred_name": attendee_name, "linkedin_url": None, "recent_post_url": None, "post_context": None}
+
         # Add to results
-        attendees_with_linkedin.append({
-            'name': attendee_name,
+        attendees_with_intel.append({
+            'name': intel_data.get('inferred_name', attendee_name),
             'email': attendee_email,
-            'linkedin_url': linkedin_url if linkedin_url else '(LinkedIn Not Verified)'
+            'linkedin_url': intel_data.get('linkedin_url') or '(LinkedIn Not Verified)',
+            'recent_post_url': intel_data.get('recent_post_url'),
+            'post_context': intel_data.get('post_context')
         })
         
         # Wait 10 seconds to avoid hitting 429 Rate Limits
         print("    ⏳ Waiting 10s to respect API quota...")
         time.sleep(10)
     
-    return attendees_with_linkedin
+    return attendees_with_intel
 
 # ========== NEW FUNCTION 3: Find Potential Key Contacts (FIXED) ==========
 def find_potential_key_contacts(brand_name, gemini_llm_client):
@@ -1544,21 +1587,29 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
     nbh_attendee_names_str = ", ".join([att['name'] for att in meeting_data['nbh_attendees']])
     brand_attendee_names_only_str = ", ".join([att['name'] for att in meeting_data['brand_attendees_info']])
     
-    # ========== NEW CODE: Format brand attendees with LinkedIn URLs ==========
+    # ========== UPGRADED CODE: Format attendees with LinkedIn & Recent Posts ==========
     brand_attendees_with_linkedin_str = ""
     for att in meeting_data['brand_attendees_info']:
+        # 1. Format LinkedIn Link
         linkedin_display = att.get('linkedin_url', '(LinkedIn Not Verified)')
-        
-        # If we have a real URL, make it a markdown link
         if linkedin_display and linkedin_display != '(LinkedIn Not Verified)':
             linkedin_display = f"[LinkedIn Profile]({linkedin_display})"
+            
+        # 2. Format Recent Post Hyperlink (If found and validated)
+        post_str = ""
+        post_url = att.get('recent_post_url')
+        if post_url and str(post_url).lower() != 'none' and str(post_url).lower() != 'null':
+            context = att.get('post_context', 'View Recent Brand Activity')
+            if not context or str(context).lower() == 'none':
+                context = 'View Recent Brand Activity'
+            post_str = f" | 📢 **Recent Activity:** [{context}]({post_url})"
         
-        # Add this attendee's info to the string
-        brand_attendees_with_linkedin_str += f"- **{att['name']}** ({att['email']}) - {linkedin_display}\n"
-    
-    # Keep the old format too for backward compatibility
+        # 3. Combine into final string
+        brand_attendees_with_linkedin_str += f"- **{att['name']}** ({att['email']}) - {linkedin_display}{post_str}\n"
+        
+    # Keep the old format too for backward compatibility in other parts of the prompt
     brand_attendees_info_str = "; ".join([f"{att['name']} ({att['email']})" for att in meeting_data['brand_attendees_info']])
-    # ========== END NEW CODE ==========
+    # ========== END UPGRADED CODE ==========
 
    # ========== NEW CODE: Format potential key contacts ==========
     potential_contacts_str = ""
