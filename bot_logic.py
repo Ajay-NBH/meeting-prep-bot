@@ -1808,36 +1808,42 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     visual_scene = visual_context.get("visual_scene", "modern lifestyle imagery")
     short_slogan = visual_context.get("short_slogan", "Exclusive Offer")
     
-    # REVISED PROMPT: Enforces a compact square (1:1) aspect ratio for the gate banner.
+    # Restored to the original prompt template style for output stability, using a square 1:1 gate banner.
     image_prompt = f"""
-    Create a highly realistic vertical collage split into exactly three distinct horizontal panels stacked top-to-bottom, separated by thin, clean, solid white lines.
-    
-    Overall Style: Professional corporate mockup catalog photography. Captured in natural, diffused daylight with soft, realistic shadows. Clean composition focusing on authentic physical textures (brushed steel, wrought iron, printed paper, and clean mobile screen glass).
-    
+    Create a highly realistic vertical collage image split into THREE distinct horizontal sections stacked top to bottom, separated by thin, clean white lines.
+    Style: Warm, photorealistic architectural and street photography. Captured in natural, direct daylight with soft, realistic shadows. Authentic physical textures (metal, steel, concrete, paper, clear glass).
+    AVOID: Highly saturated or cartoonish AI styling, artificial glossy filters, or unnecessary labels.
+
+    # ADVERTISEMENT CREATIVE BRIEF:
+    Brand: '{brand_name}' | Primary Colors: {colors}
+    Visual Scene: "{visual_scene}"
+    Slogan: "{short_slogan}"
+
     # CRITICAL DESIGN & TEXT RULES:
-    1. DO NOT write any structural labels, section headers, or metadata text anywhere on or between the panels. Text such as "Gate Banner", "Lift Banner", "PAC", "In-App Ad", "Top Section", "Middle Section", "Bottom Section", or "Mockup" must NEVER be written or rendered in the image.
-    2. The only text allowed to appear in the entire image is the brand name '{brand_name}' and the slogan "{short_slogan}", placed naturally within the simulated advertisements.
-    3. Distinct Environments: Each of the three panels must depict a completely unique physical space. Do not repeat or duplicate motifs across panels (e.g., do not show a smartphone in the top or middle panels, and do not show a gate or elevator in the bottom panel).
+    1. The advertising panels must display a professional, high-end campaign design featuring '{brand_name}' branding, the visual scene, and the exact slogan "{short_slogan}".
+    2. Only write '{brand_name}' and "{short_slogan}". Do not write meta-labels (like "Top Section", "Middle Section", "Gate Banner", or "Lift Branding") anywhere on the image.
+    3. The ad design must look physically printed and integrated naturally, displaying realistic perspective angles and reflections.
 
-    # PANEL 1 (TOP PANEL): OUTDOOR GATE BRANDING
-    - A wide-angle outdoor street-level shot showing the gated entrance of a standard Indian residential apartment complex during the day.
-    - A classic black iron sliding entrance gate is visible across the paved driveway, with a security guard in a standard uniform standing nearby.
-    - Mounted neatly onto only one side (one half) of the black iron gate is a physical, compact square signboard.
-    - CRITICAL DIMENSIONS: The signboard must be a clean square with an aspect ratio of exactly 1:1. It must be compact and occupy only a small, realistic portion of the gate's leaf, leaving most of the wrought-iron vertical bars of the gate clearly visible. It must not be wide, horizontally stretched, or cover the entire gate.
-    - The square board displays the brand logo '{brand_name}' alongside the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}" formatted to fit a square canvas.
+    - TOP SECTION — GATE BRANDING
+      - A realistic entrance of a standard Indian residential apartment complex (gated society).
+      - A large, classic black wrought-iron sliding gate blocks the paved concrete driveway.
+      - A professional Indian security guard (watchman) wearing a standard blue security uniform with a lanyard stands alert nearby.
+      - In the background, modern multi-story residential apartment towers and green trees are visible under clear daylight.
+      - A physical, compact square signboard (aspect ratio exactly 1:1) is mounted securely on only one side/half of the iron gate, leaving the rest of the iron gate's vertical bars visible.
+      - The board must be compact and cover only a small portion of the gate, sitting naturally as a real-world physical square advertisement. It must not be wide or horizontally stretched.
+      - The board displays a clean, professional square ad layout of '{brand_name}' featuring the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
 
-    # PANEL 2 (MIDDLE PANEL): ELEVATOR LIFT BRANDING
-    - An interior view from inside a modern residential elevator cab.
-    - The elevator walls are clean, premium plates of silver brushed-steel.
-    - Framed flat on the steel wall is a single vertical A3-sized paper poster inside a thin, clean acrylic frame.
-    - The poster displays a vertical advertisement layout for '{brand_name}' with the visual scene ("{visual_scene}") and the slogan "{short_slogan}".
-    - Captured from a natural, slightly angled perspective showing subtle metallic reflections. No smartphones, hands, or outdoor gate elements are visible in this panel.
+    - MIDDLE SECTION — LIFT BRANDING
+      - Inside a modern, residential elevator with brushed-steel metallic walls.
+      - A vertical A3 rectangular poster inside a clean, thin acrylic frame with small metallic corner standoffs is mounted flush on the steel wall.
+      - The poster displays the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+      - Captured with slightly angled perspective, showing realistic glass depth and soft elevator downlighting reflections on the steel surface.
 
-    # PANEL 3 (BOTTOM PANEL): DIGITAL IN-APP MOBILE MOCKUP
-    - A close-up focus shot of a physical smartphone screen held naturally in a human hand against a soft-focus, blurred indoor background.
-    - The smartphone screen displays the user interface of the NoBrokerHood mobile application.
-    - Directly integrated into the app UI is a clean, high-resolution square (1:1 aspect ratio) digital banner advertisement displaying '{brand_name}', the visual scene ("{visual_scene}"), and the slogan "{short_slogan}".
-    - No gates, elevator walls, or outdoor landscapes are visible in this panel.
+    - BOTTOM SECTION — DIGITAL IN-APP MOCKUP (PAC)
+      - A close-up shot of a smartphone held naturally in a hand.
+      - The screen shows a clean UI of the NoBrokerHood mobile app with the white visitor pre-approval notification card.
+      - Directly below the notification card, a clean, high-resolution square (1:1 aspect ratio) ad banner displays the brand's campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+      - The ad looks like a native, premium app-placement banner, with crisp rendering and subtle screen glass reflections.
     """
     
     print(f"  🎨 Generating high-fidelity visual creative for {brand_name} using gemini-3-pro-image-preview...")
