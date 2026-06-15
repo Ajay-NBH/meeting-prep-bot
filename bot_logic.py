@@ -1783,23 +1783,23 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     visual_scene = visual_context.get("visual_scene", "modern lifestyle imagery")
     short_slogan = visual_context.get("short_slogan", "Exclusive Offer")
     
-    # UPGRADED PROMPT: Enforces strict aspect ratios, bans structural text labels, and segregates panel motifs.
+    # REVISED PROMPT: Enforces a compact square (1:1) aspect ratio for the gate banner.
     image_prompt = f"""
-    Create a highly realistic, professional vertical collage split into exactly three distinct horizontal panels stacked top-to-bottom, separated by thin, clean, solid white lines.
+    Create a highly realistic vertical collage split into exactly three distinct horizontal panels stacked top-to-bottom, separated by thin, clean, solid white lines.
     
     Overall Style: Professional corporate mockup catalog photography. Captured in natural, diffused daylight with soft, realistic shadows. Clean composition focusing on authentic physical textures (brushed steel, wrought iron, printed paper, and clean mobile screen glass).
     
     # CRITICAL DESIGN & TEXT RULES:
     1. DO NOT write any structural labels, section headers, or metadata text anywhere on or between the panels. Text such as "Gate Banner", "Lift Banner", "PAC", "In-App Ad", "Top Section", "Middle Section", "Bottom Section", or "Mockup" must NEVER be written or rendered in the image.
     2. The only text allowed to appear in the entire image is the brand name '{brand_name}' and the slogan "{short_slogan}", placed naturally within the simulated advertisements.
-    3. Distinct Environments: Each of the three panels must depict a completely unique physical space. Do not repeat or duplicate motifs across panels. For example, do not display a smartphone or hand in the top or middle panels, and do not display a gate or elevator in the bottom panel.
+    3. Distinct Environments: Each of the three panels must depict a completely unique physical space. Do not repeat or duplicate motifs across panels (e.g., do not show a smartphone in the top or middle panels, and do not show a gate or elevator in the bottom panel).
 
     # PANEL 1 (TOP PANEL): OUTDOOR GATE BRANDING
     - A wide-angle outdoor street-level shot showing the gated entrance of a standard Indian residential apartment complex during the day.
-    - A classic black iron sliding gate is visible across the paved driveway, with a security guard in a standard uniform standing nearby.
-    - Mounted neatly in the center of the iron gate is a physical horizontal rectangular signboard.
-    - ASPECT RATIO LIMIT: The signboard must be a standard horizontal layout with an aspect ratio of exactly 3:1 (wide and short). It must look like a physical sign naturally mounted to a portion of the gate, and must not stretch abnormally to cover the entire gate.
-    - The signboard displays the brand '{brand_name}' alongside the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+    - A classic black iron sliding entrance gate is visible across the paved driveway, with a security guard in a standard uniform standing nearby.
+    - Mounted neatly onto only one side (one half) of the black iron gate is a physical, compact square signboard.
+    - CRITICAL DIMENSIONS: The signboard must be a clean square with an aspect ratio of exactly 1:1. It must be compact and occupy only a small, realistic portion of the gate's leaf, leaving most of the wrought-iron vertical bars of the gate clearly visible. It must not be wide, horizontally stretched, or cover the entire gate.
+    - The square board displays the brand logo '{brand_name}' alongside the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}" formatted to fit a square canvas.
 
     # PANEL 2 (MIDDLE PANEL): ELEVATOR LIFT BRANDING
     - An interior view from inside a modern residential elevator cab.
@@ -1822,7 +1822,7 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
             model="gemini-3-pro-image-preview",
             contents=image_prompt,
             config=types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"]
+                response_modalalities=["IMAGE", "TEXT"]
             )
         )
 
