@@ -1794,13 +1794,8 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
         print(f"  Skipping image generation for {brand_name}: Visual context was not extracted.")
         return None
 
-    # Standardize is_well_known parsing (handling boolean and string inputs)
-    is_well_known = visual_context.get("is_well_known")
-    if isinstance(is_well_known, str):
-        is_well_known = is_well_known.lower().strip() == "true"
-
-    # Only bypass image generation if strictly set to False
-    if is_well_known is False:
+    # Restored to the original loose evaluation logic of your original script
+    if not visual_context.get("is_well_known"):
         print(f"  Skipping image generation for {brand_name}: Brand designated as regional or obscure to avoid visual hallucination.")
         return None
         
