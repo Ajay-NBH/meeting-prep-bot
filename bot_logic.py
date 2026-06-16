@@ -1795,10 +1795,10 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     3. Distinct Environments: Each of the three panels must depict a completely unique physical space. Do not repeat or duplicate motifs across panels. For example, do not display a smartphone or hand in the top or middle panels, and do not display a gate or elevator in the bottom panel.
 
     # PANEL 1 (TOP PANEL): OUTDOOR GATE BRANDING
-    - A wide-angle outdoor street-level shot showing the gated entrance of a standard Indian residential apartment complex during the day.
-    - A classic black iron sliding gate is visible across the paved driveway, with a security guard in a standard uniform standing nearby.
-    - Mounted neatly in the center of the iron gate is a physical horizontal rectangular signboard.
-    - ASPECT RATIO LIMIT: The signboard must be a standard horizontal layout with an aspect ratio of exactly 3:1 (wide and short). It must look like a physical sign naturally mounted to a portion of the gate, and must not stretch abnormally to cover the entire gate.
+    - A wide-angle outdoor street-level shot showing the gated entrance of a residential apartment complex in India during the day.
+    - A black iron sliding gate is visible across the paved driveway, with a security guard in a uniform standing nearby.
+    - Mounted neatly in the center of the iron gate is a physical signboard.
+    - ASPECT RATIO LIMIT: The signboard must be a compact square (1:1 aspect ratio) or slightly rectangular shape (4:3 aspect ratio). It must look like a standard physical signboard naturally mounted to a small, centered portion of the gate, and must never look extremely wide, stretched, or elongated across the gate width.
     - The signboard displays the brand '{brand_name}' alongside the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
 
     # PANEL 2 (MIDDLE PANEL): ELEVATOR LIFT BRANDING
@@ -1811,7 +1811,7 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     # PANEL 3 (BOTTOM PANEL): DIGITAL IN-APP MOBILE MOCKUP
     - A close-up focus shot of a physical smartphone screen held naturally in a human hand against a soft-focus, blurred indoor background.
     - The smartphone screen displays the user interface of the NoBrokerHood mobile application.
-    - Directly integrated into the app UI is a clean, high-resolution square (1:1 aspect ratio) digital banner advertisement displaying '{brand_name}', the visual scene ("{visual_scene}"), and the slogan "{short_slogan}".
+    - Directly integrated into the app UI is a clean, high-resolution square (1:1 aspect ratio) digital banner advertisement displaying '{brand_name}', the visual scene ("{visual_scene}") and the slogan "{short_slogan}".
     - No gates, elevator walls, or outdoor landscapes are visible in this panel.
     """
     
