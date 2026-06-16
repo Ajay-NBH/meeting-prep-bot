@@ -1796,9 +1796,9 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
 
     # PANEL 1 (TOP PANEL): OUTDOOR GATE BRANDING
     - A wide-angle outdoor street-level shot showing the gated entrance of a residential apartment complex in India during the day.
-    - A black iron double gate (which splits open down the center) is visible across the paved driveway, with a security guard in a uniform standing nearby.
-    - Mounted cleanly on either the left leaf or the right leaf of the double gate is a physical signboard.
-    - POSITIONING & ASPECT RATIO LIMIT: The signboard must be a compact square (1:1 aspect ratio) or slightly rectangular shape (4:3 aspect ratio). It must be mounted entirely on one side of the gate, leaving the vertical center split clear so the gate can physically open. Do not let the signboard bridge, cross, or sit over the middle split of the gate.
+    - A black iron sliding gate is visible across the paved driveway, with a security guard in a uniform standing nearby.
+    - Mounted neatly in the center of the iron gate is a physical signboard.
+    - ASPECT RATIO LIMIT: The signboard must be a compact square (1:1 aspect ratio) or slightly rectangular shape (4:3 aspect ratio). It must look like a standard physical signboard naturally mounted to a small, centered portion of the gate, and must never look extremely wide, stretched, or elongated across the gate width.
     - The signboard displays the brand '{brand_name}' alongside the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
 
     # PANEL 2 (MIDDLE PANEL): ELEVATOR LIFT BRANDING
