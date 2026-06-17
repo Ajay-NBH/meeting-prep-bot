@@ -1736,12 +1736,13 @@ def get_brand_visual_context(gemini_client, brand_name, industry, generated_brie
     Task:
     1. is_well_known: Set to true ONLY if '{brand_name}' is a widely recognized national or multinational brand with established guidelines, recognizable logos, and clear visual identifiers in India (e.g., McDonald's, KFC, Coca-Cola, Tanishq, Puma, Horlicks, Swiggy, Amazon). Set to false if the brand is highly localized, a minor regional outlet, or obscure to prevent generating hallucinated logos.
     2. primary_colors: Identify their exact 2 primary brand colors (e.g., McDonald's is "Golden Yellow and Crimson Red", Tanishq is "Deep Maroon and Gold").
-    3. THE PITCH / CREATIVE HOOK: Carefully scan the provided text brief for sections titled "The Creative Hook", "The Big Idea", "Solution A", or "Solution B". Identify the specific creative idea or product deal we are pitching to this brand (e.g., McDonald's "Warmth, Shared" sharing packs, or Sweet Karam Coffee's "Janaki Paati's traditional snacks").
-    4. CREATE THE VISUAL SCENE: Combine the identified creative pitch/hook with premium, minimalist visual staging. Describe a clean, high-end scene centered on the proposed campaign's core concept. Examples:
-       - If McDonald's "Warmth, Shared" hook is pitched: "A high-quality close-up of a McDonald's Sharing Pack on a clean wooden dining table inside an apartment, featuring hot McSpicy burgers, crispy golden french fries, and cold beverages, with soft warm ambient lighting."
-       - If Sweet Karam Coffee "Janaki Paati's Kitchen" hook is pitched: "An authentic, warm illustration or styled photo of a traditional Indian grandmother (Paati) smiling, next to neatly arranged copper plates of traditional Indian sweets and filter coffee, set against a clean, warm-toned kitchen background."
+    3. THE PITCH / CREATIVE HOOK: Scan the provided brief carefully. Focus specifically on the real-world, active, and researched campaigns of the brand mentioned in the text (e.g., Coke's Halftime campaign, Pizza Hut's current regional menus, or Vinfast's EV community drive). Avoid generic themes; prioritize actual active projects or high-intent strategic solutions proposed in the text.
+    4. CREATE THE VISUAL SCENE: Combine the identified creative pitch/hook with premium, minimalist visual staging. Describe a clean, high-end scene centered on the proposed campaign's core concept. This scene description should represent a professional graphic design layout rather than an isolated portrait. Ensure it contains:
+       - Clear contextual elements of the brand's active marketing campaign.
+       - Clean, photorealistic presentation of the product.
+       - Realistic backgrounds matching modern Indian gated residential communities.
        Ensure the description is highly specific to the proposed pitch, clean, authentic, and photorealistic.
-    5. CREATE A SLOGAN: Extract the exact slogan proposed in the brief's creative hook, or draft a short, impactful 2-to-3 word slogan that matches the strategic pitch (e.g., "Warmth, Shared", "Tradition Delivered"). Do not invent long sentences.
+    5. CREATE A SLOGAN: Extract the exact slogan proposed in the brief's creative hook, or draft a short, impactful 2-to-3 word slogan that matches the strategic pitch (e.g., "Warmth, Shared", "Halftime Refresh"). Do not invent long sentences.
     
     Return ONLY a valid JSON object:
     {{
@@ -1794,24 +1795,25 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     2. The only text allowed to appear in the entire image is the brand name '{brand_name}' and the slogan "{short_slogan}", placed naturally within the simulated advertisements.
     3. Distinct Environments: Each of the three panels must depict a completely unique physical space. Do not repeat or duplicate motifs across panels. For example, do not display a smartphone or hand in the top or middle panels, and do not display a gate or elevator in the bottom panel.
 
-    # PANEL 1 (TOP PANEL): OUTDOOR GATE BRANDING
+    # PANEL 1 (TOP PANEL): OUTDOOR GATE BRANDING (NO PICTURE FRAMES)
     - A wide-angle outdoor street-level shot showing the gated entrance of a residential apartment complex in India during the day.
-    - A black iron sliding gate is visible across the paved driveway, with a security guard in a uniform standing nearby.
-    - Mounted neatly in the center of the iron gate is a physical signboard.
-    - ASPECT RATIO LIMIT: The signboard must be a compact square (1:1 aspect ratio) or slightly rectangular shape (4:3 aspect ratio). It must look like a standard physical signboard naturally mounted to a small, centered portion of the gate, and must never look extremely wide, stretched, or elongated across the gate width.
-    - The signboard displays the brand '{brand_name}' alongside the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+    - A black iron double gate (which splits open down the center) is visible across the paved driveway, with a security guard in a uniform standing nearby.
+    - Mounted cleanly on either the left leaf or the right leaf of the double gate is an outdoor weatherproof vinyl flex banner advertisement.
+    - PHYSICAL DESIGN & STYLE: The ad must be represented as a soft, printed PVC vinyl banner. It must have raw, clean cut-edges with no border, no wood frames, no glass covers, and no hard framing profiles. It should be stretched flat against the iron rods and tied cleanly at its corners with small, realistic metallic grommets. 
+    - POSITIONING & ASPECT RATIO: The banner must be a compact square (1:1 aspect ratio) or slightly vertical rectangle (4:3 aspect ratio). It must sit entirely on one side of the gate, leaving the vertical center split where the gate halves meet completely unobstructed and open.
+    - The vinyl banner displays the brand '{brand_name}' logo alongside the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
 
     # PANEL 2 (MIDDLE PANEL): ELEVATOR LIFT BRANDING
     - An interior view from inside a modern residential elevator cab.
     - The elevator walls are clean, premium plates of silver brushed-steel.
-    - Framed flat on the steel wall is a single vertical A3-sized paper poster inside a thin, clean acrylic frame.
-    - The poster displays a vertical advertisement layout for '{brand_name}' with the visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+    - Framed flat on the steel wall is an ad poster inside a slim, commercial anodized aluminum snap-frame with very narrow borders.
+    - The poster inside is a high-quality matte paper print displaying a vertical commercial layout for '{brand_name}' with the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
     - Captured from a natural, slightly angled perspective showing subtle metallic reflections. No smartphones, hands, or outdoor gate elements are visible in this panel.
 
     # PANEL 3 (BOTTOM PANEL): DIGITAL IN-APP MOBILE MOCKUP
     - A close-up focus shot of a physical smartphone screen held naturally in a human hand against a soft-focus, blurred indoor background.
     - The smartphone screen displays the user interface of the NoBrokerHood mobile application.
-    - Directly integrated into the app UI is a clean, high-resolution square (1:1 aspect ratio) digital banner advertisement displaying '{brand_name}', the visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+    - Directly integrated into the app UI feed is a clean, high-resolution square (1:1 aspect ratio) digital banner advertisement displaying '{brand_name}' branding, the campaign visual scene ("{visual_scene}"), and the slogan "{short_slogan}".
     - No gates, elevator walls, or outdoor landscapes are visible in this panel.
     """
     
