@@ -1811,10 +1811,14 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     - The poster inside is a high-quality matte paper print displaying a vertical commercial layout for '{brand_name}' with the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
     - Captured from a natural, slightly angled perspective showing subtle metallic reflections. No smartphones, hands, or outdoor gate elements are visible in this panel.
 
-    # PANEL 3 (BOTTOM PANEL): DIGITAL IN-APP MOBILE MOCKUP
-    - A close-up focus shot of a physical smartphone screen held naturally in a human hand against a soft-focus, blurred indoor background.
-    - The smartphone screen displays the user interface of the NoBrokerHood mobile application.
-    - Directly integrated into the app UI feed is a clean, high-resolution square (1:1 aspect ratio) digital banner advertisement displaying '{brand_name}' branding, the campaign visual scene ("{visual_scene}"), and the slogan "{short_slogan}".
+    # PANEL 3 (BOTTOM PANEL): DIGITAL IN-APP MOBILE MOCKUP (REPLICATING NATIVE PRE-APPROVAL CARD)
+    - A close-up focus shot of a physical smartphone screen held naturally in a human hand against a soft-focus, blurred indoor home living room background.
+    - The smartphone screen displays the authentic native user interface of the NoBrokerHood mobile application.
+    - TOP PORTION OF APP UI: Features a clean, curved modal panel titled "Allow Future Entries". Directly below the title, there are exactly four distinctive, clean, bright yellow circular buttons arranged in a horizontal row, with minimalist dark vector icons. Each icon is labeled directly below from left to right: "Guest", "Cab", "Delivery", and "Visiting Help".
+    - SUB-HEADER BANNER: Directly below the yellow buttons is a thin, clean light-purple horizontal banner displaying the text "Safe Pickup Mode" alongside a tiny, simple blue security shield icon.
+    - INTEGRATED BANNER ADVERTISEMENT: Seamlessly integrated into the app UI directly below the purple banner is a large, sharp vertical banner advertisement for '{brand_name}' using colors: {colors}. The advertisement displays the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
+    - AD SYSTEM LABELS: A small, clean text label displaying "AD" is positioned at the bottom right corner of the advertisement. The bottom system footer of the phone screen displays the text "Why am I seeing this ad?" along with a clean mobile application navigation bar.
+    - STRICT EXCLUSION: Do not generate any social media elements. There must be no profile picture circles, no heart icons, no comment bubbles, no bookmark flags, and no social media feed headers anywhere on the screen.
     - No gates, elevator walls, or outdoor landscapes are visible in this panel.
     """
     
@@ -2287,15 +2291,17 @@ def generate_isolated_mockup(gemini_client, brand_name, colors, visual_scene, sl
     if not gemini_client:
         return None
         
-    # Build isolated context prompt for the targeted placement
+    # Build isolated context prompt for the targeted placement (PAC Interface UI Parity)
     if placement_type == "App":
         scene_prompt = f"""
         Create a clean digital in-app mockup. 
-        A close-up shot of a smartphone held naturally in a hand. 
-        The screen displays the NoBrokerHood app UI.
-        Directly in the center of the UI is a high-resolution, sharp square ad banner for the brand '{brand_name}' using colors: {colors}.
-        The ad displays the scene: "{visual_scene}" with the slogan "{slogan}".
-        Style: Photorealistic, modern UI, direct daylight. No text overlays outside the phone screen.
+        A close-up shot of a smartphone held naturally in a hand against a soft-focus indoor background. 
+        The screen displays the authentic native user interface of the NoBrokerHood app's Pre-Approval Card (PAC) screen.
+        TOP SECTION OF THE APP: Displays a curved panel titled "Allow Future Entries" containing exactly four bright yellow circular buttons with simple black icons labeled "Guest", "Cab", "Delivery", and "Visiting Help" underneath them.
+        SUB-HEADER BANNER: A thin, clean light-purple banner sits directly below the circular buttons displaying "Safe Pickup Mode" with a tiny blue security shield icon.
+        APP AD PLACEMENT: Directly integrated into the app UI below the purple banner is a clean, vertical advertisement banner for the brand '{brand_name}' using colors: {colors}. The ad displays the scene: "{visual_scene}" with the slogan "{slogan}" and a small "AD" label at the bottom corner.
+        STRICT EXCLUSION: Do not generate any social media feed icons, hearts, comments, bookmark flags, or user handles.
+        Style: Photorealistic, modern mobile app UI, direct indoor lighting.
         """
     else:  # Lift ad
         scene_prompt = f"""
