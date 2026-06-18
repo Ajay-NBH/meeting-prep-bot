@@ -1084,7 +1084,8 @@ def extract_strict_campaigns_and_case_studies(file_data_obj, fname, brand_clean,
         final_output += matches_sub_category_priority + matches_sub_category_other
         
     if matches_strict_priority or matches_strict_other:
-        final_output.append("**Other Industry Campaigns (2025-2026):**")
+        # Re-labeled to signal to the LLM that these are broad fallbacks and must not be matched to different product categories
+        final_output.append("**Broad Industry Fallbacks (Low Relevance - Match ONLY if product category is identical):**")
         final_output += matches_strict_priority + matches_strict_other
     
     return final_output
