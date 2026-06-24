@@ -2425,9 +2425,10 @@ def main():
         print(f"\nProcessing event: '{event_summary}' (ID: {event_id})")
 
         # Step 1: Check if the event has already been processed or is currently being processed
-        # BYPASS duplicate and tagging checks if in testing mode so you can run tests repeatedly!
-        if not is_testing_mode and is_event_already_tagged(event_description_for_tag_check):
-            print(f"  Skipping event '{event_summary}': Already tagged as processed or currently processing.")
+        # Even in testing mode, skip if the final processed tag is already present in the description.
+        # This prevents the background Cloud Scheduler from running loops and spamming your inbox.
+        if is_event_already_tagged(event_description_for_tag_check):
+            print(f"  Skipping event '{event_summary}': Already tagged as processed.")
             continue
         
         if not is_testing_mode and event_id in processed_ids_local_file:
@@ -2436,7 +2437,6 @@ def main():
 
         # 🚀 CRITICAL FIX: Lock the event immediately so concurrent Webhooks don't duplicate work
         tag_event_as_processing(calendar_service, event_id)
-
         # Step 2: Extract basic meeting info (attendees, raw title, etc.)
         meeting_data_result = extract_meeting_info(event_payload, AGENT_EMAIL, NBH_SERVICE_ACCOUNTS_TO_EXCLUDE)
 
