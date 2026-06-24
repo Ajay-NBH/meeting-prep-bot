@@ -57,11 +57,56 @@ SCOPES = [
 CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json") # Downloaded from GCP
 TOKEN_FILE_PREFIX = 'token_brandvmeet' # Will generate token_brandvmeet_calendar.json etc.
 
+import requests # Serper.dev
+
 # For Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Set this environment variable
+SERPER_API_KEY = os.getenv("SERPER_API_KEY") # <-- NEW: Set this in your environment config
 
 # Google Drive Folder ID containing NBH data
 NBH_GDRIVE_FOLDER_ID = os.getenv("NBH_GDRIVE_FOLDER_ID") # Set env var or replace placeholder
+
+# =====================================================================
+# NEW HELPER: SERPER.DEV SEARCH API CALL
+# =====================================================================
+def execute_serper_search_api(query, num_results=5):
+    """
+    Executes a Google search via Serper.dev pointing to India region.
+    Returns clean organic title, link, and snippet text.
+    """
+    if not SERPER_API_KEY:
+        print("  ⚠️ [SERPER] API Key is missing. Skipping search.")
+        return "Search results unavailable: API Key missing."
+        
+    url = "https://google.serper.dev/search"
+    payload = json.dumps({
+        "q": query,
+        "num": num_results,
+        "gl": "in" # Constrain searches to India region
+    })
+    headers = {
+        'X-API-KEY': SERPER_API_KEY,
+        'Content-Type': 'application/json'
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, data=payload, timeout=10)
+        if response.status_code == 200:
+            organic_results = response.json().get("organic", [])
+            if not organic_results:
+                return "No search results found on Google."
+                
+            formatted = []
+            for i, res in enumerate(organic_results, 1):
+                title = res.get("title", "No Title")
+                link = res.get("link", "No Link")
+                snippet = res.get("snippet", "")
+                formatted.append(f"[{i}] {title}\nURL: {link}\nSnippet: {snippet}\n")
+            return "\n".join(formatted)
+        else:
+            return f"Search failed. Code: {response.status_code}"
+    except Exception as e:
+        return f"Search network error: {e}"
 
 AGENT_EMAIL = "brand.vmeet@nobroker.in" # Email of the agent account
 ADMIN_EMAIL_FOR_NOTIFICATIONS = "ajay.saini@nobroker.in" # REPLACE with your actual email
@@ -260,10 +305,10 @@ def is_brand_match(brand1, brand2):
         
     return False
 # ========== UPGRADED FUNCTION 1: Search for LinkedIn & Recent Posts ==========
-def search_attendee_intel(email, raw_name, company_name, gemini_llm_client):
+def search_attendee_intel(email, raw_name, company_name, gemini_llm_client, is_testing_mode=False):
     """
-    Intelligently splits email prefixes into real names, finds LinkedIn profiles, 
-    and searches for recent brand-related posts/articles by the person.
+    Profiles attendees using Serper.dev if in testing mode, otherwise falls back to native Google Grounding.
+    Handles personal profiles vs activity posts dynamically.
     """
     if not gemini_llm_client:
         return None
@@ -271,76 +316,81 @@ def search_attendee_intel(email, raw_name, company_name, gemini_llm_client):
     email_prefix = email.split('@')[0] if '@' in email else email
     domain = email.split('@')[1] if '@' in email else ""
 
-    search_prompt = f"""
-    You are an expert OSINT researcher profiling a meeting attendee.
-    Email Prefix: '{email_prefix}'
-    Domain: '{domain}'
-    Company Name: '{company_name}' in India.
-    Raw Name from calendar: '{raw_name}'
-
-    Task 1: Deduce the person's likely full human name from the email prefix (e.g., 'vikramadityauppal' becomes 'Vikram Aditya Uppal').
-    Task 2: Use Google Search to find their exact official LinkedIn profile URL.
-    Task 3: Search if this specific person has recently posted on LinkedIn, or been featured in articles/news regarding '{company_name}'.
-
-    CRITICAL ANTI-HALLUCINATION RULES:
-    1. DO NOT guess, invent, or construct URLs. 
-    2. If the Google Search tool does not return a definitive, working URL for THIS EXACT PERSON, you MUST return null for that field.
-    3. Do not return company LinkedIn pages, only the individual person's profile.
-
-    Return ONLY a valid JSON object in this exact format:
-    {{
-        "inferred_name": "The properly formatted full name",
-        "linkedin_url": "https://www.linkedin.com/in/... or null",
-        "recent_post_url": "https://... or null",
-        "post_context": "Short 3-5 word description of the post or null"
-    }}
-    """
-
-    grounding_tool = types.Tool(google_search=types.GoogleSearch())
-    
-    # Temperature 0.0 + JSON MIME type to force strict, hallucination-free output
-    config = types.GenerateContentConfig(
-        temperature=0.0,
-        tools=[grounding_tool],
-        response_mime_type="application/json"
-    )
-    
-    try:
-        response = gemini_llm_client.models.generate_content(
-            model="gemini-2.5-flash", 
-            contents=search_prompt,
-            config=config
-        )
+    if is_testing_mode:
+        search_query = f"{raw_name or email_prefix} {company_name or domain} India LinkedIn"
+        print(f"    🔍 [Attendee Search] Querying Serper: '{search_query}'")
+        search_context = execute_serper_search_api(search_query, num_results=4)
         
-        result_text = response.text.strip()
-        data = json.loads(result_text)
-        
-        # PYTHON-SIDE VALIDATION: Catch any LLM hallucinations
-        # 1. Validate LinkedIn URL
-        if data.get('linkedin_url'):
-            if 'linkedin.com/in/' not in data['linkedin_url'].lower():
-                data['linkedin_url'] = None # Reject if it's a company page or fake link
-                
-        # 2. Validate Post URL
-        if data.get('recent_post_url'):
-            if not str(data['recent_post_url']).startswith('http'):
-                data['recent_post_url'] = None
-                data['post_context'] = None
+        prompt = f"""
+        You are an expert OSINT researcher profiling a meeting attendee.
+        Email: '{email}' | Company Name: '{company_name}' in India.
+        Raw Name from calendar: '{raw_name}'
+
+        Here are real-time search results:
+        ---
+        {search_context}
+        ---
+
+        Task 1: Deduce their correct full name.
+        Task 2: Extract their personal profile URL (must contain 'linkedin.com/in/').
+        Task 3: Extract any recent post/activity link from the search results (usually contains 'linkedin.com/posts/').
+
+        RULES:
+        1. Only return URLs present in the search data. Do not make up links.
+        2. Do not return company pages, only personal profiles or their direct post URLs.
+        3. If no matching LinkedIn profile is found, return null.
+
+        Return ONLY a JSON object:
+        {{
+            "inferred_name": "Full Name",
+            "linkedin_url": "https://www.linkedin.com/in/... or null",
+            "recent_post_url": "https://www.linkedin.com/posts/... or null",
+            "post_context": "Short description of post topic or null"
+        }}
+        """
+        config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
+        try:
+            response = gemini_llm_client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
+            data = json.loads(response.text.strip())
+            return data
+        except Exception as e:
+            print(f"  Error parsing Serper response for {email}: {e}")
+            return {"inferred_name": raw_name.title() or email_prefix.title(), "linkedin_url": None, "recent_post_url": None, "post_context": None}
             
-        return data
-        
-    except Exception as e:
-        print(f"  Error searching Intel for {email}: {e}")
-        return {
-            "inferred_name": raw_name.title() if raw_name else email_prefix.title(),
-            "linkedin_url": None,
-            "recent_post_url": None,
-            "post_context": None
-        }
+    else:
+        # Standard native Google Grounding logic
+        search_prompt = f"""
+        You are an expert OSINT researcher profiling a meeting attendee.
+        Email Prefix: '{email_prefix}'
+        Domain: '{domain}'
+        Company Name: '{company_name}' in India.
+        Raw Name from calendar: '{raw_name}'
+
+        Task 1: Deduce the person's likely full human name from the email prefix.
+        Task 2: Use Google Search to find their exact official LinkedIn profile URL.
+        Task 3: Search if this specific person has recently posted on LinkedIn regarding '{company_name}'.
+
+        Return ONLY a valid JSON object:
+        {{
+            "inferred_name": "Full Name",
+            "linkedin_url": "https://www.linkedin.com/in/... or null",
+            "recent_post_url": "https://... or null",
+            "post_context": "Short description of the post or null"
+        }}
+        """
+        grounding_tool = types.Tool(google_search=types.GoogleSearch())
+        config = types.GenerateContentConfig(temperature=0.0, tools=[grounding_tool], response_mime_type="application/json")
+        try:
+            response = gemini_llm_client.models.generate_content(model="gemini-2.5-flash", contents=search_prompt, config=config)
+            data = json.loads(response.text.strip())
+            return data
+        except Exception as e:
+            print(f"  Error using native grounding for {email}: {e}")
+            return {"inferred_name": raw_name.title(), "linkedin_url": None, "recent_post_url": None, "post_context": None}
 
 
 # ========== UPGRADED FUNCTION 2: Get LinkedIn & Posts for All Attendees ==========
-def get_brand_attendees_linkedin_info(brand_attendees_list, brand_name, gemini_llm_client):
+def get_brand_attendees_linkedin_info(brand_attendees_list, brand_name, gemini_llm_client, is_testing_mode=False):
     """
     For each brand attendee, search for their LinkedIn profile and recent activity.
     Returns a list with clean names, LinkedIn URLs, and Post URLs added.
@@ -353,14 +403,12 @@ def get_brand_attendees_linkedin_info(brand_attendees_list, brand_name, gemini_l
         
         print(f"    🔍 Searching OSINT Intel for: {attendee_email} at {brand_name}")
         
-        # Call the new intelligent search function
-        intel_data = search_attendee_intel(attendee_email, attendee_name, brand_name, gemini_llm_client)
+        # Call search function passing the testing mode parameter
+        intel_data = search_attendee_intel(attendee_email, attendee_name, brand_name, gemini_llm_client, is_testing_mode)
         
-        # Fallback if API fails completely
         if not intel_data:
             intel_data = {"inferred_name": attendee_name, "linkedin_url": None, "recent_post_url": None, "post_context": None}
 
-        # Add to results
         attendees_with_intel.append({
             'name': intel_data.get('inferred_name', attendee_name),
             'email': attendee_email,
@@ -369,83 +417,100 @@ def get_brand_attendees_linkedin_info(brand_attendees_list, brand_name, gemini_l
             'post_context': intel_data.get('post_context')
         })
         
-        # Wait 10 seconds to avoid hitting 429 Rate Limits
         print("    ⏳ Waiting 10s to respect API quota...")
         time.sleep(10)
     
     return attendees_with_intel
 
 # ========== NEW FUNCTION 3: Find Potential Key Contacts (FIXED) ==========
-def find_potential_key_contacts(brand_name, gemini_llm_client):
+def find_potential_key_contacts(brand_name, gemini_llm_client, is_testing_mode=False):
     """
     Finds 2-3 current Brand Managers or Program Managers at the company in India.
     """
     if not gemini_llm_client:
         return []
-    
-    discovery_prompt = f"""
-Use Google Search to find 2-3 current marketing or brand professionals at {brand_name} India.
 
-Target roles (Priority order):
-1. Brand Manager / Senior Brand Manager
-2. Marketing Program Manager
-3. Media Lead / Digital Marketing Manager
+    if is_testing_mode:
+        search_query = f"{brand_name} India LinkedIn (Brand Manager OR Marketing Partnerships OR Partnerships Manager)"
+        print(f"    🔍 [Serper Testing Key Contacts] Querying: {search_query}")
+        search_context = execute_serper_search_api(search_query, num_results=5)
 
-Search Strategy:
-- Focus specifically on "{brand_name} India LinkedIn Brand Manager"
-- Focus specifically on "{brand_name} India Marketing Program Manager"
+        discovery_prompt = f"""
+        You are an expert executive search strategist mapping key decision-makers.
+        Brand: {brand_name} (India)
 
-IMPORTANT RULES:
-1. Identify REAL people currently working in these roles in India.
-2. Return in this EXACT JSON format:
-{{
-  "contacts": [
-    {{"name": "Full Name", "title": "Job Title", "reasoning": "Manages brand programs and marketing budgets"}}
-  ]
-}}
-3. If no one is found, return {{"contacts": []}}
-"""
-    grounding_tool = types.Tool(google_search=types.GoogleSearch())
-    config = types.GenerateContentConfig(
-        temperature=0.1, # Lower temperature for better accuracy
-        tools=[grounding_tool] # REMOVED JSON MIME TYPE TO PREVENT API CRASH
-    )
-    
-    try:
-        # Step 1: Discover people using Google Search Grounding
-        response = gemini_llm_client.models.generate_content(
-            model="gemini-2.0-flash", # Improved grounding model
-            contents=discovery_prompt,
-            config=config
-        )
+        Review this organic web search data:
+        ---
+        {search_context}
+        ---
+
+        Task: Identify 2-3 marketing or brand leaders currently in India.
+        RULES:
+        1. Extract their full name, exact title, and verified personal profile link (must contain 'linkedin.com/in/').
         
-        result_text = response.text.strip()
-        result_text = re.sub(r'```json\s*|\s*```', '', result_text).strip()
-        contacts_data = json.loads(result_text)
-        discovered_contacts = contacts_data.get("contacts", [])
-        
-        enriched_contacts = []
-        for contact in discovered_contacts[:3]: # Max 3 contacts
-            name = contact.get("name", "")
-            if not name: continue
+        Return ONLY this JSON format:
+        {{
+          "contacts": [
+            {{"name": "Full Name", "title": "Job Title", "reasoning": "Coordinates partnerships", "linkedin_url": "Profile URL or null"}}
+          ]
+        }}
+        """
+        config = types.GenerateContentConfig(temperature=0.1, response_mime_type="application/json")
+        try:
+            response = gemini_llm_client.models.generate_content(model="gemini-2.5-flash", contents=discovery_prompt, config=config)
+            contacts_data = json.loads(response.text.strip())
+            return contacts_data.get("contacts", [])
+        except Exception as e:
+            print(f"    Error parsing key contacts from Serper: {e}")
+            return []
             
-            print(f"      Searching LinkedIn for discovered contact: {name}")
+    else:
+        # Original production search logic
+        discovery_prompt = f"""
+        Use Google Search to find 2-3 current marketing or brand professionals at {brand_name} India.
+        Target roles (Priority order):
+        1. Brand Manager / Senior Brand Manager
+        2. Marketing Program Manager
+        3. Media Lead / Digital Marketing Manager
+
+        Return in this EXACT JSON format:
+        {{
+          "contacts": [
+            {{"name": "Full Name", "title": "Job Title", "reasoning": "Manages brand programs and marketing budgets"}}
+          ]
+        }}
+        """
+        grounding_tool = types.Tool(google_search=types.GoogleSearch())
+        config = types.GenerateContentConfig(temperature=0.1, tools=[grounding_tool])
+        try:
+            response = gemini_llm_client.models.generate_content(model="gemini-2.0-flash", contents=discovery_prompt, config=config)
+            result_text = response.text.strip()
+            result_text = re.sub(r'```json\s*|\s*```', '', result_text).strip()
+            contacts_data = json.loads(result_text)
+            discovered_contacts = contacts_data.get("contacts", [])
             
-            # Step 2: Use search_linkedin_profile to get the specific URL
-            linkedin_url = search_linkedin_profile(name, brand_name, gemini_llm_client)
-            
-            enriched_contacts.append({
-                'name': name,
-                'title': contact.get("title", ""),
-                'reasoning': contact.get("reasoning", "Key decision-maker for NBH collaborations"),
-                'linkedin_url': linkedin_url if linkedin_url else '(LinkedIn Not Verified)'
-            })
-            time.sleep(2) # Pause between searches to avoid hitting quotas
-        
-        return enriched_contacts
-    except Exception as e:
-        print(f"    Error in key contact discovery for {brand_name}: {e}")
-        return []
+            enriched_contacts = []
+            for contact in discovered_contacts[:3]:
+                name = contact.get("name", "")
+                if not name: continue
+                
+                # Check if helper function exists inside local imports, else assign placeholder
+                try:
+                    linkedin_url = search_linkedin_profile(name, brand_name, gemini_llm_client)
+                except NameError:
+                    linkedin_url = None
+                
+                enriched_contacts.append({
+                    'name': name,
+                    'title': contact.get("title", ""),
+                    'reasoning': contact.get("reasoning", "Key decision-maker for NBH collaborations"),
+                    'linkedin_url': linkedin_url if linkedin_url else '(LinkedIn Not Verified)'
+                })
+                time.sleep(2)
+            return enriched_contacts
+        except Exception as e:
+            print(f"    Error in key contact discovery for {brand_name}: {e}")
+            return []
 
 class Industry(enum.Enum):
     FMCG = "FMCG"
@@ -1581,22 +1646,20 @@ def configure_gemini():
         return None  
 
 
-def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, meeting_data, internal_data_summary_str):
+def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, meeting_data, internal_data_summary_str, is_testing_mode=False):
     if not gemini_llm_client:
         return "Error: Gemini model not available."
 
     nbh_attendee_names_str = ", ".join([att['name'] for att in meeting_data['nbh_attendees']])
     brand_attendee_names_only_str = ", ".join([att['name'] for att in meeting_data['brand_attendees_info']])
     
-    # ========== UPGRADED CODE: Format attendees with LinkedIn & Recent Posts ==========
+    # Format attendees with LinkedIn & Recent Activity
     brand_attendees_with_linkedin_str = ""
     for att in meeting_data['brand_attendees_info']:
-        # 1. Format LinkedIn Link
         linkedin_display = att.get('linkedin_url', '(LinkedIn Not Verified)')
         if linkedin_display and linkedin_display != '(LinkedIn Not Verified)':
             linkedin_display = f"[LinkedIn Profile]({linkedin_display})"
             
-        # 2. Format Recent Post Hyperlink (If found and validated)
         post_str = ""
         post_url = att.get('recent_post_url')
         if post_url and str(post_url).lower() != 'none' and str(post_url).lower() != 'null':
@@ -1605,14 +1668,11 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
                 context = 'View Recent Brand Activity'
             post_str = f" | 📢 **Recent Activity:** [{context}]({post_url})"
         
-        # 3. Combine into final string
         brand_attendees_with_linkedin_str += f"- **{att['name']}** ({att['email']}) - {linkedin_display}{post_str}\n"
         
-    # Keep the old format too for backward compatibility in other parts of the prompt
     brand_attendees_info_str = "; ".join([f"{att['name']} ({att['email']})" for att in meeting_data['brand_attendees_info']])
-    # ========== END UPGRADED CODE ==========
 
-   # ========== NEW CODE: Format potential key contacts ==========
+    # Format potential key contacts
     potential_contacts_str = ""
     key_contacts_list = meeting_data.get('potential_key_contacts', [])
 
@@ -1627,75 +1687,65 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
             potential_contacts_str += f"  - Why They Matter: {contact['reasoning']}\n\n"
     else:
         potential_contacts_str = "**No additional key contacts found through search.**\n\n"
-    # ========== END NEW CODE ==========
 
+    # Enforce Serper search context for campaign news during testing mode
+    enriched_internal_summary = internal_data_summary_str
+    if is_testing_mode:
+        print(f"    🔍 [Serper News] Running search for '{meeting_data['brand_name']}' India news...")
+        campaign_search_data = execute_serper_search_api(f"'{meeting_data['brand_name']}' India marketing campaign news 2025 2026", num_results=3)
+        enriched_internal_summary = (
+            f"{internal_data_summary_str}\n\n"
+            f"## RECENT BRAND PUBLIC NEWS & CAMPAIGNS (VERIFIED GOOGLE INDEX):\n"
+            f"{campaign_search_data}\n"
+        )
 
     prompt_filled = YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI.format(
-    MEETING_DATETIME=meeting_data['start_time_str'],
-    MEETING_LOCATION=meeting_data['location'],
-    BRAND_NAME=meeting_data['brand_name'],
-    BRAND_ATTENDEES_NAMES=brand_attendee_names_only_str,
-    NBH_ATTENDEES_NAMES=nbh_attendee_names_str,
-    BRAND_NAME_FOR_BODY=meeting_data['brand_name'],
-    MEETING_TITLE=meeting_data.get('title', 'N/A'),
-    BRAND_ATTENDEES_FULL_DETAILS=brand_attendees_info_str,
-    BRAND_ATTENDEES_WITH_LINKEDIN=brand_attendees_with_linkedin_str,
-    POTENTIAL_KEY_CONTACTS=potential_contacts_str,
-    INTERNAL_NBH_DATA_SUMMARY=internal_data_summary_str
-)
-    
-    grounding_tool = types.Tool(
-        google_search=types.GoogleSearch()
+        MEETING_DATETIME=meeting_data['start_time_str'],
+        MEETING_LOCATION=meeting_data['location'],
+        BRAND_NAME=meeting_data['brand_name'],
+        BRAND_ATTENDEES_NAMES=brand_attendee_names_only_str,
+        NBH_ATTENDEES_NAMES=nbh_attendee_names_str,
+        BRAND_NAME_FOR_BODY=meeting_data['brand_name'],
+        MEETING_TITLE=meeting_data.get('title', 'N/A'),
+        BRAND_ATTENDEES_FULL_DETAILS=brand_attendees_info_str,
+        BRAND_ATTENDEES_WITH_LINKEDIN=brand_attendees_with_linkedin_str,
+        POTENTIAL_KEY_CONTACTS=potential_contacts_str,
+        INTERNAL_NBH_DATA_SUMMARY=enriched_internal_summary
     )
-
+    
     # Configure generation settings
-    config = types.GenerateContentConfig(
-    # sampling parameters (formerly generation_config dict)
-    temperature=0.0,
-    top_p=0.95,
-    top_k=40,
+    config_args = {
+        "temperature": 0.0,
+        "top_p": 0.95,
+        "top_k": 40,
+        "safety_settings": [
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE),
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE),
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE),
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE),
+        ]
+    }
 
-    # safety filters (formerly safety_settings list of dicts)
-    safety_settings=[
-        types.SafetySetting(
-            category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        ),
-        types.SafetySetting(
-            category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        ),
-        types.SafetySetting(
-            category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        ),
-        types.SafetySetting(
-            category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        ),
-    ],
+    # Only attach search grounding if we are NOT in Serper testing mode
+    if not is_testing_mode:
+        grounding_tool = types.Tool(google_search=types.GoogleSearch())
+        config_args["tools"] = [grounding_tool]
 
-    # tools (formerly a separate config.tools or tools argument)
-    tools=[grounding_tool],
-)
+    config = types.GenerateContentConfig(**config_args)
 
     print(f"  Sending request to Gemini for brand: {meeting_data['brand_name']}...")
     try:
-        # Use Google Search grounding by adding tools=[{"tool": "google_search"}]
         response = gemini_llm_client.models.generate_content(
-            model="gemini-2.5-flash",  # Use the latest Gemini model
+            model="gemini-2.5-flash",
             contents=prompt_filled,
-            config=config,
-            # tools=[{"tool": "google_search"}]  # Enable Google Search grounding >> not working on API calls rights now
+            config=config
         )
-        # print(f"Gemini raw response: {response}") # For debugging
         if response.prompt_feedback and response.prompt_feedback.block_reason:
             return f"Error: Prompt blocked by Gemini. Reason: {response.prompt_feedback.block_reason_message or response.prompt_feedback.block_reason}"
 
         if not response.candidates:
-             return f"Error: Gemini returned no candidates. Feedback: {response.prompt_feedback}"
+             return f"Error: Gemini returned no candidates."
 
-        # Ensure text is extracted correctly
         brief_content = ""
         for part in response.candidates[0].content.parts:
             brief_content += part.text
@@ -1703,17 +1753,10 @@ def generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_
         if not brief_content.strip():
             return "Error: Gemini returned an empty brief."
             
-        # ========== NEW FIX: SWEEP CITATION HALLUCINATIONS ==========
-        # Invisibly deletes any[cite: x, y, z...] tags the AI tries to print
         brief_content = re.sub(r'\[cite:.*?\]', '', brief_content)
-        # ============================================================
-            
         return brief_content
     except Exception as e:
         print(f"  Error during Gemini API call: {e}")
-        # Check for specific API errors if needed, e.g. google.api_core.exceptions.ResourceExhausted
-        if "429" in str(e) or "ResourceExhausted" in str(e): # Quota issue
-             return "Error: Gemini API quota likely exceeded. Please check your Google Cloud/AI Studio quotas."
         return f"Error: Exception during Gemini call: {e}"
 # =====================================================================
 # UNIFIED HIGH-QUALITY IMAGE GENERATION WORKFLOW
@@ -2219,120 +2262,9 @@ def write_into_doc(docs_service, doc_id, text):
 
 
 # =====================================================================
-# PPT GENERATION HELPER FUNCTIONS (TESTING MODE ONLY)
+# PPT GENERATION HELPER FUNCTIONS REMOVED
 # =====================================================================
-def generate_custom_pitch_deck(master_pptx_stream, brand_name, meeting_date_str, app_mockup_bytes=None, lift_mockup_bytes=None):
-    """
-    Opens the master PowerPoint template byte stream, modifies the title slide placeholders,
-    replaces geometric placeholder vectors with AI-generated visual mockups,
-    and returns the finalized presentation as an exportable byte stream.
-    """
-    try:
-        prs = Presentation(master_pptx_stream)
-        
-        # --- 1. Modify Text on Title Slide (Slide 1) ---
-        title_slide = prs.slides[0]
-        for shape in title_slide.shapes:
-            if shape.has_text_frame:
-                text_frame = shape.text_frame
-                for paragraph in text_frame.paragraphs:
-                    for run in paragraph.runs:
-                        if "{{CLIENT_BRAND_NAME}}" in run.text:
-                            run.text = run.text.replace("{{CLIENT_BRAND_NAME}}", brand_name)
-                        if "{{MEETING_DATE}}" in run.text:
-                            run.text = run.text.replace("{{MEETING_DATE}}", meeting_date_str)
-                            
-        # --- 2. Replace Slide Placeholders with Mockup Images ---
-        for slide_idx, slide in enumerate(prs.slides):
-            # Target Slide 12 (0-indexed index 11) for App Mockup
-            if slide_idx == 11 and app_mockup_bytes:
-                replace_shape_with_image(slide, "Placeholder_App_PAC", app_mockup_bytes)
-                
-            # Target Slide 22 (0-indexed index 21) for Lift Mockup
-            elif slide_idx == 21 and lift_mockup_bytes:
-                replace_shape_with_image(slide, "Placeholder_Lift_Ad", lift_mockup_bytes)
-                
-        # Save presentation back into a memory-based stream
-        output_stream = io.BytesIO()
-        prs.save(output_stream)
-        output_stream.seek(0)
-        return output_stream.getvalue()
-        
-    except Exception as e:
-        print(f"  [PPT ERROR] Error modifying presentation template: {e}")
-        return None
-
-def replace_shape_with_image(slide, placeholder_name, image_bytes):
-    """
-    Finds a shape by its specific name, extracts its layout dimensions,
-    removes it from the presentation, and places the mockup in its place.
-    """
-    for shape in list(slide.shapes):
-        if shape.name == placeholder_name:
-            left = shape.left
-            top = shape.top
-            width = shape.width
-            height = shape.height
-            
-            # Programmatically strip out vector placeholder element
-            sp = shape._element
-            sp.getparent().remove(sp)
-            
-            # Place the visual asset at the identical coordinates
-            image_stream = io.BytesIO(image_bytes)
-            slide.shapes.add_picture(image_stream, left, top, width, height)
-            break
-
-def generate_isolated_mockup(gemini_client, brand_name, colors, visual_scene, slogan, placement_type):
-    """
-    Generates a single, clean visual mockup corresponding to the placement type (App or Lift)
-    using the Gemini image model.
-    """
-    if not gemini_client:
-        return None
-        
-    # Build isolated context prompt for the targeted placement (PAC Interface UI Parity)
-    if placement_type == "App":
-        scene_prompt = f"""
-        Create a clean digital in-app mockup. 
-        A close-up shot of a smartphone held naturally in a hand against a soft-focus indoor background. 
-        The screen displays the authentic native user interface of the NoBrokerHood app's Pre-Approval Card (PAC) screen.
-        TOP SECTION OF THE APP: Displays a curved panel titled "Allow Future Entries" containing exactly four bright yellow circular buttons with simple black icons labeled "Guest", "Cab", "Delivery", and "Visiting Help" underneath them.
-        SUB-HEADER BANNER: A thin, clean light-purple banner sits directly below the circular buttons displaying "Safe Pickup Mode" with a tiny blue security shield icon.
-        APP AD PLACEMENT: Directly integrated into the app UI below the purple banner is a clean, vertical advertisement banner for the brand '{brand_name}' using colors: {colors}. The ad displays the scene: "{visual_scene}" with the slogan "{slogan}" and a small "AD" label at the bottom corner.
-        STRICT EXCLUSION: Do not generate any social media feed icons, hearts, comments, bookmark flags, or user handles.
-        Style: Photorealistic, modern mobile app UI, direct indoor lighting.
-        """
-    else:  # Lift ad
-        scene_prompt = f"""
-        Create a vertical advertisement poster framed inside a clean residential elevator.
-        The elevator has modern, brushed-steel walls.
-        A vertical frame displays an ad poster for the brand '{brand_name}' using colors: {colors}.
-        The ad displays the scene: "{visual_scene}" with the slogan "{slogan}".
-        Style: Photorealistic, clean perspective, natural metallic textures.
-        """
-        
-    try:
-        response = gemini_client.models.generate_content(
-            model="gemini-3-pro-image-preview",
-            contents=scene_prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"]
-            )
-        )
-        if response.candidates:
-            for part in response.candidates[0].content.parts:
-                if part.inline_data and part.inline_data.mime_type.startswith("image/"):
-                    raw_data = part.inline_data.data
-                    if isinstance(raw_data, str):
-                        raw_data = base64.b64decode(raw_data)
-                    elif isinstance(raw_data, bytes) and not raw_data.startswith(b'\xff\xd8\xff'):
-                        raw_data = base64.b64decode(raw_data)
-                    return raw_data
-        return None
-    except Exception as e:
-        print(f"  [IMAGE ERROR] Failed to generate isolated {placement_type} mockup: {e}")
-        return None
+# Clean slate: PPT helper logic deleted to avoid execution during Serper testing.
 
 
 def get_sheet_owner_from_email(email):
@@ -2582,13 +2514,21 @@ def main():
         # Step 7: Merge the successful LLM results into the main meeting_data dictionary
         meeting_data.update(brand_details)
 
+        # Determine if this specific meeting is gated for Serper Testing
+        is_testing_mode = "testing" in meeting_data.get('title', '').lower()
+        if is_testing_mode:
+            print("  🧪 [TESTING MODE DETECTED] Activating Serper.dev integration for this event.")
+        else:
+            print("  💼 [PRODUCTION MODE DETECTED] Using standard Google Search Grounding for this event.")
+
         # ========== NEW CODE STARTS HERE ==========
         # Get LinkedIn profiles for brand attendees
         print(f"  📱 Fetching LinkedIn profiles for brand attendees...")
         brand_attendees_with_linkedin = get_brand_attendees_linkedin_info(
             meeting_data.get('brand_attendees_info', []),
             meeting_data['brand_name'],
-            gemini_llm_client
+            gemini_llm_client,
+            is_testing_mode=is_testing_mode # <-- NEW: Pass testing flag
         )
         
         # Replace the old brand attendees info with the new one that has LinkedIn URLs
@@ -2600,7 +2540,8 @@ def main():
         print(f"  🎯 Finding potential key contacts at {meeting_data['brand_name']}...")
         potential_key_contacts = find_potential_key_contacts(
             meeting_data['brand_name'],
-            gemini_llm_client
+            gemini_llm_client,
+            is_testing_mode=is_testing_mode # <-- NEW: Pass testing flag
         )
         
         # Add to meeting data
@@ -2805,12 +2746,17 @@ def main():
 
         print(f"  Proceeding with brief generation for: {meeting_data['brand_name']}")
         
-        # 1. THE WRITER: Generate the Text Brief FIRST so we have the strategy
-        generated_brief = generate_brief_with_gemini(gemini_llm_client, YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, meeting_data, internal_nbh_data_for_brand_str)
+        # 1. THE WRITER: Generate the Text Brief FIRST using the is_testing_mode flag
+        generated_brief = generate_brief_with_gemini(
+            gemini_llm_client, 
+            YOUR_DETAILED_PROMPT_TEMPLATE_GEMINI, 
+            meeting_data, 
+            internal_data_summary_str,
+            is_testing_mode=is_testing_mode # <-- NEW: Pass testing flag to control grounding
+        )
 
         # 2. IMAGE GENERATION (NOW LIVE FOR ALL MEETINGS)
         creative_image_bytes = None
-        ppt_share_link = None # Tracks PPT GDrive link for test cases
 
         if ENABLE_IMAGE_GENERATION:
             if generated_brief and "Error:" not in generated_brief:
@@ -2834,77 +2780,6 @@ def main():
                             visual_context
                         )
                         
-                        # =====================================================================
-                        # SAFE TESTING GATE FOR AUTOMATED PPT GENERATION
-                        # =====================================================================
-                        is_testing_mode = "testing" in meeting_data.get('title', '').lower()
-                        
-                        if is_testing_mode:
-                            print(f"  🧪 [TESTING MODE ACTIVE] Initializing PowerPoint Generation...")
-                            try:
-                                # Your real Google Drive PowerPoint Template File ID
-                                ppt_template_file_id = "16Wrw54h_NrHKvxwdnHI1KWEm-mL2DMWR"
-                                
-                                # Fetch visual parameters from our visual director
-                                colors = visual_context.get("primary_colors", "vibrant colors")
-                                visual_scene = visual_context.get("visual_scene", "modern lifestyle imagery")
-                                short_slogan = visual_context.get("short_slogan", "Exclusive Offer")
-                                
-                                # Generate isolated layouts specifically to fit presentation placeholders
-                                print("  🧪 Generating isolated App banner mockup for PPT Slide 12...")
-                                app_bytes = generate_isolated_mockup(gemini_llm_client, meeting_data['brand_name'], colors, visual_scene, short_slogan, "App")
-                                
-                                print("  🧪 Generating isolated Elevator poster mockup for PPT Slide 22...")
-                                lift_bytes = generate_isolated_mockup(gemini_llm_client, meeting_data['brand_name'], colors, visual_scene, short_slogan, "Lift")
-                                
-                                # Download the master PPTX file from Google Drive
-                                print("  🧪 Downloading Master PowerPoint Template from Google Drive...")
-                                request_pptx = drive_service.files().get_media(fileId=ppt_template_file_id)
-                                ppt_stream = io.BytesIO()
-                                downloader_pptx = MediaIoBaseDownload(ppt_stream, request_pptx)
-                                done_pptx = False
-                                while not done_pptx:
-                                    _, done_pptx = downloader_pptx.next_chunk()
-                                ppt_stream.seek(0)
-                                
-                                # Modify template text & insert the new visuals
-                                print("  🧪 Modifying PowerPoint template with customized branding...")
-                                customized_deck_bytes = generate_custom_pitch_deck(
-                                    ppt_stream,
-                                    brand_name=meeting_data['brand_name'],
-                                    meeting_date_str=meeting_data['start_time_str'],
-                                    app_mockup_bytes=app_bytes,
-                                    lift_mockup_bytes=lift_bytes
-                                )
-                                
-                                if customized_deck_bytes:
-                                    # Upload the finalized deck to the Brief Folder on Drive
-                                    print("  🧪 Uploading customized Pitch Deck to Google Drive folder...")
-                                    ppt_metadata = {
-                                        'name': f"NBH Customized Deck - {meeting_data['brand_name']}.pptx",
-                                        'parents': [BRIEF_FOLDER_ID]
-                                    }
-                                    media_upload = MediaIoBaseUpload(
-                                        io.BytesIO(customized_deck_bytes), 
-                                        mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
-                                        resumable=True
-                                    )
-                                    uploaded_deck = drive_service.files().create(
-                                        body=ppt_metadata, 
-                                        media_body=media_upload, 
-                                        fields='id'
-                                    ).execute()
-                                    
-                                    ppt_share_link = f"https://docs.google.com/presentation/d/{uploaded_deck.get('id')}"
-                                    print(f"  🧪 [TESTING SUCCESS] Deck generated successfully! Link: {ppt_share_link}")
-                                    
-                            except Exception as ppt_err:
-                                # Safety handler to ensure errors do not interrupt production brief generation
-                                print(f"  ⚠️ [TESTING EXCEPTION] PowerPoint generation was bypassed: {ppt_err}")
-                        else:
-                            print("  Bypassing PowerPoint generation (Standard live mode).")
-                        # =====================================================================
-                        
                     else:
                         print(f"  Could not derive visual context for '{meeting_data['brand_name']}'.")
                 
@@ -2927,24 +2802,6 @@ def main():
     <a href="{FEEDBACK_FORM_URL}">👉 Click Here to Fill the Feedback Form</a></p>
 </div>
 """
-
-        # Append PPT links for test users in the email body
-        if ppt_share_link:
-            ppt_header = f"""
-<div style="margin-bottom: 25px; background-color: #e6fffa; border: 1px solid #319795; padding: 20px; border-radius: 8px;">
-    <h3 style="color: #234e52; font-size: 16px; margin-top: 0; padding-bottom: 8px; border-bottom: 1px solid #b2f5ea;">
-        📊 🧪 TEST MODE ACTIVE: Customized Presentation Generated
-    </h3>
-    <p style="font-size: 14px; color: #2d3748; margin-bottom: 12px;">
-        A customized PowerPoint presentation deck has been assembled for this brand. 
-        It contains dynamic ad mockups designed specifically for Slide 12 and Slide 22.
-    </p>
-    <a href="{ppt_share_link}" style="display: inline-block; background-color: #319795; color: white; padding: 10px 18px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 13px;">
-        👉 Open Pitch Deck on Google Slides
-    </a>
-</div>
-"""
-            generated_brief = ppt_header + generated_brief
 
         # 3. Append the footer to the generated brief
         # Only add it if the brief was generated successfully (no errors)
