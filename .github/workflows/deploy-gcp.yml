@@ -52,6 +52,7 @@ jobs:
           PUBSUB_TOPIC_ID=calendar-updates
           CI=false
           GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          SERPER_API_KEY=${{ secrets.SERPER_API_KEY }}
           NBH_GDRIVE_FOLDER_ID=${{ secrets.NBH_GDRIVE_FOLDER_ID }}
           ADMIN_EMAIL_FOR_NOTIFICATIONS=${{ secrets.ADMIN_EMAIL_FOR_NOTIFICATIONS }}
           CALENDAR_TOKEN=calendar_token.json
