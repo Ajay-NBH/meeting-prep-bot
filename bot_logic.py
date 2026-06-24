@@ -434,7 +434,8 @@ def find_potential_key_contacts(brand_name, gemini_llm_client, is_testing_mode=F
         return []
 
     if is_testing_mode:
-        search_query = f"{brand_name} India LinkedIn (Brand Manager OR Marketing Partnerships OR Partnerships Manager)"
+        # Refined query to pull mid-to-lower execution roles prominently
+        search_query = f"{brand_name} India LinkedIn (Brand Manager OR Associate Brand Manager OR Marketing Manager OR Campaign Manager)"
         print(f"    🔍 [Serper Testing Key Contacts] Querying: {search_query}")
         search_context = execute_serper_search_api(search_query, num_results=5)
 
