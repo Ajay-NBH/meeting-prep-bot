@@ -1420,16 +1420,16 @@ def is_event_already_tagged(event_description):
     if lock_match:
         lock_time = int(lock_match.group(1))
         current_time = int(time.time())
-        # If lock is older than 20 minutes (1200 seconds), the previous run crashed. Override it.
-        if current_time - lock_time > 1200:
-            print("  ⚠️ Found STALE lock from a crashed run. Overriding...")
+        # If lock is older than 5 minutes (300 seconds), the previous run timed out on GCP. Override it.
+        if current_time - lock_time > 300:
+            print("  ⚠️ Found STALE lock from a timed-out run. Overriding...")
             return False
         else:
             return True # Still locked by an active, healthy run
             
     # 3. FIX FOR YOUR CURRENT BUG: If the old string-based lock is found, override it!
     if "[NBH_PROCESSING_IN_PROGRESS]" in desc:
-        print("  ⚠️ Found OLD stuck lock from yesterday. Overriding...")
+        print("  ⚠️ Found OLD stuck lock. Overriding...")
         return False
 
     return False
@@ -2416,14 +2416,18 @@ def main():
         event_summary = event_payload.get('summary', 'No Title')
         event_description_for_tag_check = event_payload.get('description')
 
+        # Determine if this specific meeting is gated for Serper Testing
+        is_testing_mode = "testing" in event_summary.lower()
+
         print(f"\nProcessing event: '{event_summary}' (ID: {event_id})")
 
         # Step 1: Check if the event has already been processed or is currently being processed
-        if is_event_already_tagged(event_description_for_tag_check):
+        # BYPASS duplicate and tagging checks if in testing mode so you can run tests repeatedly!
+        if not is_testing_mode and is_event_already_tagged(event_description_for_tag_check):
             print(f"  Skipping event '{event_summary}': Already tagged as processed or currently processing.")
             continue
         
-        if event_id in processed_ids_local_file:
+        if not is_testing_mode and event_id in processed_ids_local_file:
             print(f"  Skipping event '{event_summary}': Found in local processed file.")
             continue
 
