@@ -1946,7 +1946,7 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
     """Sends the brief email, injecting the AI creative if available. Includes TEST MODE."""
     EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in", "pia.hood@nobroker.in", "meetings.regional@gmail.com"} 
 
-    nbh_recipient_emails = []
+    nbh_recipient_emails =[]
     attendees_list = meeting_data.get('nbh_attendees',[]) 
     if isinstance(attendees_list, list):
         for att in attendees_list:
@@ -1962,7 +1962,7 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
     
     if TEST_MODE:
         print("  ⚠️ TEST MODE IS ON: Overriding recipients. Sending only to Admin.")
-        nbh_recipient_emails = [ADMIN_EMAIL_FOR_NOTIFICATIONS]
+        nbh_recipient_emails =[ADMIN_EMAIL_FOR_NOTIFICATIONS]
     # =====================================================================
 
     if not nbh_recipient_emails:
@@ -1970,8 +1970,8 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
         return
 
     email_subject = f"[{'TEST' if TEST_MODE else 'Pre-Meeting Brief'}]: {meeting_data['title']} with {meeting_data['brand_name']}"
-
-    # --- NEW: Build and Inject the Event ID Box ---
+    
+    # --- Build and Inject the Event ID Box with Bright Yellow styling ---
     event_id_val = meeting_data.get('id', 'N/A')
     event_id_box_html = (
         f'<div class="event-id-box">'
@@ -1987,7 +1987,6 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
         # Prepend to the top of the brief as a fallback if the pattern is not found
         modified_brief_content = f"{event_id_box_html}\n\n{brief_content}"
 
-    # Convert the modified Markdown (containing our inline HTML Event ID box) to standard HTML
     html_brief_content = markdown.markdown(modified_brief_content)
     
     # --- INJECT IMAGE HTML ---
@@ -2024,11 +2023,11 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
         .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #718096; }}
         .highlight-box {{ background-color: #f0f8ff; border: 1px solid #bee3f8; border-radius: 6px; padding: 15px 20px; margin-top: 30px; margin-bottom: 20px; }}
         
-        /* NEW: Soft Google Green Event ID box CSS definitions */
+        /* NEW: Soft Google Yellow Event ID Box Styles */
         .event-id-box {{
-            background-color: #e6f4ea;
-            border: 1px solid #34a853;
-            color: #137333;
+            background-color: #fef7e0;
+            border: 1px solid #fbbc04;
+            color: #b06000;
             border-radius: 6px;
             padding: 10px 16px;
             margin-top: 15px;
@@ -2040,13 +2039,13 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
         }}
         .event-id-text {{
             font-family: 'Courier New', Courier, monospace;
-            font-weight: normal;
+            font-weight: bold;
             background-color: #ffffff;
             padding: 2px 8px;
-            border: 1px solid #ceead6;
+            border: 1px solid #fde293;
             border-radius: 4px;
             margin-left: 5px;
-            color: #202124;
+            color: #3c4043;
         }}
     </style>
     </head>
