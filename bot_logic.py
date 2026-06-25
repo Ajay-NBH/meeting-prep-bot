@@ -1946,7 +1946,7 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
     """Sends the brief email, injecting the AI creative if available. Includes TEST MODE."""
     EXCLUDED_EMAILS = {AGENT_EMAIL.lower(), "pia.brand@nobroker.in", "pia.hood@nobroker.in", "meetings.regional@gmail.com"} 
 
-    nbh_recipient_emails =[]
+    nbh_recipient_emails = []
     attendees_list = meeting_data.get('nbh_attendees',[]) 
     if isinstance(attendees_list, list):
         for att in attendees_list:
@@ -1962,7 +1962,7 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
     
     if TEST_MODE:
         print("  ⚠️ TEST MODE IS ON: Overriding recipients. Sending only to Admin.")
-        nbh_recipient_emails =[ADMIN_EMAIL_FOR_NOTIFICATIONS]
+        nbh_recipient_emails = [ADMIN_EMAIL_FOR_NOTIFICATIONS]
     # =====================================================================
 
     if not nbh_recipient_emails:
@@ -1970,7 +1970,25 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
         return
 
     email_subject = f"[{'TEST' if TEST_MODE else 'Pre-Meeting Brief'}]: {meeting_data['title']} with {meeting_data['brand_name']}"
-    html_brief_content = markdown.markdown(brief_content)
+
+    # --- NEW: Build and Inject the Event ID Box ---
+    event_id_val = meeting_data.get('id', 'N/A')
+    event_id_box_html = (
+        f'<div class="event-id-box">'
+        f'Event ID: <span class="event-id-text">{event_id_val}</span>'
+        f'</div>'
+    )
+
+    # Search for the Brand Attendees line in the markdown and insert the Event ID box directly beneath it
+    brand_attendees_pattern = re.compile(r'(Brand Attendees\s*:.*?)(\n|$)', re.IGNORECASE)
+    if brand_attendees_pattern.search(brief_content):
+        modified_brief_content = brand_attendees_pattern.sub(rf'\1\n\n{event_id_box_html}\n', brief_content)
+    else:
+        # Prepend to the top of the brief as a fallback if the pattern is not found
+        modified_brief_content = f"{event_id_box_html}\n\n{brief_content}"
+
+    # Convert the modified Markdown (containing our inline HTML Event ID box) to standard HTML
+    html_brief_content = markdown.markdown(modified_brief_content)
     
     # --- INJECT IMAGE HTML ---
     creative_html = ""
@@ -2005,6 +2023,31 @@ def send_brief_email(gmail_service, meeting_data, brief_content, creative_image_
         li {{ font-size: 14px; margin-bottom: 8px; color: #4a5568; }}
         .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #718096; }}
         .highlight-box {{ background-color: #f0f8ff; border: 1px solid #bee3f8; border-radius: 6px; padding: 15px 20px; margin-top: 30px; margin-bottom: 20px; }}
+        
+        /* NEW: Soft Google Green Event ID box CSS definitions */
+        .event-id-box {{
+            background-color: #e6f4ea;
+            border: 1px solid #34a853;
+            color: #137333;
+            border-radius: 6px;
+            padding: 10px 16px;
+            margin-top: 15px;
+            margin-bottom: 20px;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: bold;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }}
+        .event-id-text {{
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: normal;
+            background-color: #ffffff;
+            padding: 2px 8px;
+            border: 1px solid #ceead6;
+            border-radius: 4px;
+            margin-left: 5px;
+            color: #202124;
+        }}
     </style>
     </head>
     <body>
