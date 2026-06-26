@@ -1859,13 +1859,17 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     - Captured from a natural, slightly angled perspective showing subtle metallic reflections. No smartphones, hands, or outdoor gate elements are visible in this panel.
 
     # PANEL 3 (BOTTOM PANEL): DIGITAL IN-APP MOBILE MOCKUP (REAL PRE-APPROVAL CARD LAYOUT)
-    - A close-up focus shot of a physical smartphone screen held naturally in a human hand against a soft-focus, blurred indoor living room background.
+    - A close-up focus shot of a physical smartphone screen held naturally in a human hand against a soft-focus, blurred indoor home living room background.
     - The smartphone screen displays the native delivery pre-approval card layout of the NoBrokerHood app over a clean, dark charcoal gray background.
     - THE CLOSING ICON: A small, minimalist gray "X" close icon sits near the top-right corner of the dark screen.
     - FLOATING PRE-APPROVAL SLIP (AT THE TOP): A prominent, horizontal white card with cleanly rounded corners floats near the top of the viewport.
       - At the top of this white card is a solid green horizontal header bar with the text "✔ Delivery Pre-Approved" in white alongside a small white checkmark circle icon.
       - Inside the body of this white card (directly beneath the green header bar), a small red and gray delivery scooter graphic is on the left, with the bold black text "Delivery" and a smaller gray date stamp "16 Jun '26 11:31 - 16 Jun '26 12:31" displayed to its right.
-    - HIGH-RELIABILITY MARKETING AD BANNER: Positioned directly beneath the floating pre-approval card is a large, high-resolution vertical advertisement for '{brand_name}' using colors: {colors}. The advertisement displays the campaign visual scene ("{visual_scene}") and the campaign slogan "{short_slogan}".
+    - FULL-WIDTH VERTICAL AD BANNER: Positioned directly beneath the floating pre-approval card is a large, tall, vertically-oriented rectangular advertisement banner (aspect ratio 2:3). 
+      - The banner must stretch cleanly to the left and right edges of the dark phone screen viewport, filling the entire lower two-thirds of the screen.
+      - The ad graphics, including '{brand_name}' logo, the campaign visual scene ("{visual_scene}"), and the slogan "{short_slogan}", must be natively integrated directly into this tall, full-bleed vertical banner's graphic design.
+      - STRICT EXCLUSION: No surrounding borders, frames, margins, or padding around the advertisement banner. It must not look like a floating square post.
+    - AD SYSTEM LABELS: A small, clean text label displaying "AD" is positioned at the bottom right corner of the advertisement. The bottom system footer of the phone screen displays the text "Why am I seeing this ad?" along with a clean mobile application navigation bar.
     - STRICT EXCLUSION: No social media post layouts. No heart icons, comment bubbles, share arrows, user handles, or round profile picture elements are allowed anywhere on the screen.
     - No gates, elevator walls, or outdoor landscapes are visible in this panel.
     """
