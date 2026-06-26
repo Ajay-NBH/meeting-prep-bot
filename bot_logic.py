@@ -1858,14 +1858,15 @@ def generate_creative_with_gemini_image(gemini_client, brand_name, industry, vis
     - The poster inside is a high-quality matte paper print displaying a vertical commercial layout for '{brand_name}' with the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
     - Captured from a natural, slightly angled perspective showing subtle metallic reflections. No smartphones, hands, or outdoor gate elements are visible in this panel.
 
-    # PANEL 3 (BOTTOM PANEL): DIGITAL IN-APP MOBILE MOCKUP (REPLICATING NATIVE PRE-APPROVAL CARD)
-    - A close-up focus shot of a physical smartphone screen held naturally in a human hand against a soft-focus, blurred indoor home living room background.
-    - The smartphone screen displays the authentic native user interface of the NoBrokerHood mobile application.
-    - TOP PORTION OF APP UI: Features a clean, curved modal panel titled "Allow Future Entries". Directly below the title, there are exactly four distinctive, clean, bright yellow circular buttons arranged in a horizontal row, with minimalist dark vector icons. Each icon is labeled directly below from left to right: "Guest", "Cab", "Delivery", and "Visiting Help".
-    - SUB-HEADER BANNER: Directly below the yellow buttons is a thin, clean light-purple horizontal banner displaying the text "Safe Pickup Mode" alongside a tiny, simple blue security shield icon.
-    - INTEGRATED BANNER ADVERTISEMENT: Seamlessly integrated into the app UI directly below the purple banner is a large, sharp vertical banner advertisement for '{brand_name}' using colors: {colors}. The advertisement displays the campaign visual scene ("{visual_scene}") and the slogan "{short_slogan}".
-    - AD SYSTEM LABELS: A small, clean text label displaying "AD" is positioned at the bottom right corner of the advertisement. The bottom system footer of the phone screen displays the text "Why am I seeing this ad?" along with a clean mobile application navigation bar.
-    - STRICT EXCLUSION: Do not generate any social media elements. There must be no profile picture circles, no heart icons, no comment bubbles, no bookmark flags, and no social media feed headers anywhere on the screen.
+    # PANEL 3 (BOTTOM PANEL): DIGITAL IN-APP MOBILE MOCKUP (REAL PRE-APPROVAL CARD LAYOUT)
+    - A close-up focus shot of a physical smartphone screen held naturally in a human hand against a soft-focus, blurred indoor living room background.
+    - The smartphone screen displays the native delivery pre-approval card layout of the NoBrokerHood app over a clean, dark charcoal gray background.
+    - THE CLOSING ICON: A small, minimalist gray "X" close icon sits near the top-right corner of the dark screen.
+    - FLOATING PRE-APPROVAL SLIP (AT THE TOP): A prominent, horizontal white card with cleanly rounded corners floats near the top of the viewport.
+      - At the top of this white card is a solid green horizontal header bar with the text "✔ Delivery Pre-Approved" in white alongside a small white checkmark circle icon.
+      - Inside the body of this white card (directly beneath the green header bar), a small red and gray delivery scooter graphic is on the left, with the bold black text "Delivery" and a smaller gray date stamp "16 Jun '26 11:31 - 16 Jun '26 12:31" displayed to its right.
+    - HIGH-RELIABILITY MARKETING AD BANNER: Positioned directly beneath the floating pre-approval card is a large, high-resolution vertical advertisement for '{brand_name}' using colors: {colors}. The advertisement displays the campaign visual scene ("{visual_scene}") and the campaign slogan "{short_slogan}".
+    - STRICT EXCLUSION: No social media post layouts. No heart icons, comment bubbles, share arrows, user handles, or round profile picture elements are allowed anywhere on the screen.
     - No gates, elevator walls, or outdoor landscapes are visible in this panel.
     """
     
